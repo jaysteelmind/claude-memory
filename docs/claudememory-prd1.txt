@@ -1,0 +1,1289 @@
+﻿PRD Phase 1: DMM Core System
+Product Requirements Document
+Version: 1.0
+Status: Draft
+Target Duration: 2 weeks
+Dependencies: None (foundational phase)
+
+1. Executive Summary
+1.1 Purpose
+This PRD defines the first phase of the Dynamic Markdown Memory (DMM) system: the Core System. This phase establishes the foundational infrastructure that all subsequent phases depend upon, including the memory filesystem, indexing with composite embeddings, the Baseline Pack, two-stage retrieval, context assembly, and daemon lifecycle management.
+1.2 Success Criteria
+Phase 1 is complete when:
+    1. An agent can issue dmm query "<task>" and receive a Memory Pack containing relevant memories 
+    2. The Baseline Pack is always included in every Memory Pack, regardless of query 
+    3. Composite embeddings successfully differentiate semantically similar memories 
+    4. Token budgets are respected and reported accurately 
+    5. The daemon starts/stops cleanly with Claude Code lifecycle 
+    6. All memories are indexed within 5 seconds of file change 
+1.3 Out of Scope (Deferred to Later Phases)
+Feature	Deferred To
+Write-back operations (create, update, deprecate)	Phase 2
+Reviewer Agent	Phase 2
+Review queue	Phase 2
+Usage tracking (log_usage)	Phase 2
+Promotion/demotion	Phase 2
+Conflict Detector	Phase 3
+Conflict resolution workflow	Phase 3
+Multi-agent support	Phase 4+
+1.4 Continuity to Phase 2
+Phase 1 establishes the following interfaces that Phase 2 will consume:
+Interface	Phase 1 Responsibility	Phase 2 Extension
+index/embeddings.db	Schema defined, populated	Read for duplicate detection
+index/stats.db	Schema defined (empty)	Populated by usage tracking
+Memory file schema	Defined and validated	Extended with usage_count, last_used
+Daemon IPC	HTTP API for query	Extended with write endpoints
+CLI framework	dmm query, dmm daemon	Extended with dmm write, dmm review
+
+2. System Architecture
+2.1 High-Level Component Diagram
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              DMM Core System                                 │
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │    File        │    │     Indexer     │    │    Embedding Store      │ │
+│  │    Watcher     │───▶│                 │───▶│    (sqlite-vss)         │ │
+│  │                │    │  - Parse MD     │    │                         │ │
+│  │  - inotify     │    │  - Composite    │    │  - vectors              │ │
+│  │  - debounce    │    │    embed        │    │  - metadata             │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
+│                                                           │                 │
+│                                                           ▼                 │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │    Baseline     │    │   Retrieval     │    │   Context Assembler     │ │
+│  │    Pack Cache   │───▶│   Router        │───▶│                         │ │
+│  │                 │    │                 │    │  - Token budgeting      │ │
+│  │  - Precompiled  │    │  - Stage 1: Dir │    │  - Pack formatting      │ │
+│  │  - Auto-regen   │    │  - Stage 2: File│    │  - Citations            │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
+│                                                           │                 │
+│                                                           ▼                 │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │    Daemon       │    │    HTTP API     │    │    CLI Interface        │ │
+│  │    Manager      │◀──▶│    (localhost)  │◀──▶│                         │ │
+│  │                 │    │                 │    │  - dmm query            │ │
+│  │  - Lifecycle    │    │  - /query       │    │  - dmm daemon           │ │
+│  │  - Health       │    │  - /health      │    │  - dmm status           │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+2.2 Technology Stack
+Component	Technology	Rationale
+Language	Python 3.11+	Ecosystem, embedding libraries, rapid development
+Embedding Model	sentence-transformers/all-MiniLM-L6-v2	Fast, local, good quality for short docs
+Vector Store	sqlite-vss	Single-file, no external dependencies, good for MVP
+Metadata Store	SQLite	Same file as vectors, atomic operations
+File Watching	watchdog	Cross-platform, mature
+HTTP Server	uvicorn + FastAPI	Async, lightweight, good CLI integration
+CLI Framework	typer	Modern, type-safe, good UX
+YAML Parsing	pyyaml + python-frontmatter	Standard, reliable
+Token Counting	tiktoken	Accurate, fast, OpenAI-compatible
+2.3 Directory Structure (Implementation)
+dmm/
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── dmm/
+│       ├── __init__.py
+│       ├── cli/
+│       │   ├── __init__.py
+│       │   ├── main.py              # CLI entrypoint
+│       │   ├── query.py             # dmm query command
+│       │   └── daemon.py            # dmm daemon commands
+│       ├── core/
+│       │   ├── __init__.py
+│       │   ├── config.py            # Configuration loading
+│       │   ├── constants.py         # System constants
+│       │   └── exceptions.py        # Custom exceptions
+│       ├── indexer/
+│       │   ├── __init__.py
+│       │   ├── watcher.py           # File system watcher
+│       │   ├── parser.py            # Markdown + frontmatter parsing
+│       │   ├── embedder.py          # Composite embedding generation
+│       │   └── store.py             # sqlite-vss operations
+│       ├── retrieval/
+│       │   ├── __init__.py
+│       │   ├── router.py            # Two-stage retrieval
+│       │   ├── baseline.py          # Baseline Pack management
+│       │   └── assembler.py         # Context assembly
+│       ├── daemon/
+│       │   ├── __init__.py
+│       │   ├── server.py            # FastAPI application
+│       │   ├── lifecycle.py         # Start/stop management
+│       │   └── health.py            # Health check endpoints
+│       └── models/
+│           ├── __init__.py
+│           ├── memory.py            # Memory file data model
+│           ├── pack.py              # Memory Pack data model
+│           └── query.py             # Query request/response models
+└── tests/
+    ├── __init__.py
+    ├── conftest.py
+    ├── test_indexer/
+    ├── test_retrieval/
+    └── test_daemon/
+
+3. Data Models
+3.1 Memory File Model
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+class Scope(Enum):
+    BASELINE = "baseline"
+    GLOBAL = "global"
+    AGENT = "agent"
+    PROJECT = "project"
+    EPHEMERAL = "ephemeral"
+
+class Confidence(Enum):
+    EXPERIMENTAL = "experimental"
+    ACTIVE = "active"
+    STABLE = "stable"
+    DEPRECATED = "deprecated"
+
+class Status(Enum):
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+@dataclass
+class MemoryFile:
+    """Represents a parsed memory markdown file."""
+    
+    # Identity
+    id: str                                    # mem_YYYY_MM_DD_NNN
+    path: str                                  # Relative path from .dmm/memory/
+    
+    # Content
+    title: str                                 # Extracted from first H1
+    body: str                                  # Full markdown body
+    token_count: int                           # Counted via tiktoken
+    
+    # Metadata (from frontmatter)
+    tags: list[str]
+    scope: Scope
+    priority: float                            # 0.0 - 1.0
+    confidence: Confidence
+    status: Status
+    
+    # Optional metadata
+    created: Optional[datetime] = None
+    last_used: Optional[datetime] = None       # Phase 2: populated by usage tracking
+    usage_count: int = 0                       # Phase 2: populated by usage tracking
+    supersedes: list[str] = field(default_factory=list)
+    related: list[str] = field(default_factory=list)
+    expires: Optional[datetime] = None
+    
+    # Derived
+    directory: str = ""                        # e.g., "project/constraints"
+    
+    def __post_init__(self):
+        # Extract directory from path
+        parts = self.path.rsplit("/", 1)
+        self.directory = parts[0] if len(parts) > 1 else ""
+3.2 Indexed Memory Model (Database)
+@dataclass
+class IndexedMemory:
+    """Represents a memory in the vector store."""
+    
+    # Primary key
+    id: str
+    
+    # File reference
+    path: str
+    directory: str
+    
+    # Embeddings (stored as BLOBs)
+    composite_embedding: list[float]           # 384 dimensions for MiniLM
+    directory_embedding: list[float]           # For stage-1 routing
+    
+    # Metadata for filtering/ranking
+    scope: str
+    priority: float
+    confidence: str
+    status: str
+    tags_json: str                             # JSON array
+    token_count: int
+    
+    # Indexing metadata
+    file_hash: str                             # SHA256 of file contents
+    indexed_at: datetime
+3.3 Memory Pack Model
+@dataclass
+class MemoryPackEntry:
+    """A single memory included in a pack."""
+    path: str
+    title: str
+    content: str
+    token_count: int
+    relevance_score: float                     # 0.0 - 1.0
+    source: str                                # "baseline" | "retrieved"
+
+@dataclass
+class MemoryPack:
+    """The compiled memory pack returned to the agent."""
+    
+    # Metadata
+    generated_at: datetime
+    query: str
+    
+    # Token accounting
+    baseline_tokens: int
+    retrieved_tokens: int
+    total_tokens: int
+    budget: int
+    
+    # Entries (ordered)
+    baseline_entries: list[MemoryPackEntry]
+    retrieved_entries: list[MemoryPackEntry]
+    
+    # For traceability
+    included_paths: list[str]
+    excluded_paths: list[str]                  # Paths that didn't fit budget
+    
+    def to_markdown(self) -> str:
+        """Render as markdown for context injection."""
+        # Implementation in Section 6
+        pass
+3.4 Query Request/Response Models
+@dataclass
+class QueryRequest:
+    """Request to retrieve a Memory Pack."""
+    query: str
+    budget: int = 2000                         # Total token budget
+    baseline_budget: int = 800                 # Reserved for baseline
+    scope_filter: Optional[Scope] = None       # Limit to specific scope
+    exclude_ephemeral: bool = False
+    include_deprecated: bool = False
+    verbose: bool = False                      # Include relevance scores
+
+@dataclass
+class QueryResponse:
+    """Response containing the Memory Pack."""
+    pack: MemoryPack
+    pack_markdown: str                         # Rendered markdown
+    stats: dict                                # Timing, counts, etc.
+
+4. Database Schema
+4.1 SQLite Schema (index/embeddings.db)
+-- Enable sqlite-vss extension
+-- (loaded at runtime)
+
+-- Main memories table
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    path TEXT UNIQUE NOT NULL,
+    directory TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    
+    -- Metadata
+    scope TEXT NOT NULL CHECK (scope IN ('baseline', 'global', 'agent', 'project', 'ephemeral')),
+    priority REAL NOT NULL CHECK (priority >= 0.0 AND priority <= 1.0),
+    confidence TEXT NOT NULL CHECK (confidence IN ('experimental', 'active', 'stable', 'deprecated')),
+    status TEXT NOT NULL CHECK (status IN ('active', 'deprecated')),
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    token_count INTEGER NOT NULL,
+    
+    -- Lifecycle (Phase 2 will populate)
+    created_at TEXT,
+    last_used_at TEXT,
+    usage_count INTEGER DEFAULT 0,
+    expires_at TEXT,
+    
+    -- Relations
+    supersedes_json TEXT DEFAULT '[]',
+    related_json TEXT DEFAULT '[]',
+    
+    -- Indexing
+    file_hash TEXT NOT NULL,
+    indexed_at TEXT NOT NULL,
+    
+    -- Indexes
+    CONSTRAINT valid_token_count CHECK (token_count >= 0 AND token_count <= 2000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memories_directory ON memories(directory);
+CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);
+CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+CREATE INDEX IF NOT EXISTS idx_memories_priority ON memories(priority DESC);
+
+-- Virtual table for composite embeddings (sqlite-vss)
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_embeddings USING vss0(
+    composite_embedding(384),    -- MiniLM dimension
+    directory_embedding(384)
+);
+
+-- Mapping table (vss0 uses rowid)
+CREATE TABLE IF NOT EXISTS embedding_map (
+    rowid INTEGER PRIMARY KEY,
+    memory_id TEXT UNIQUE NOT NULL REFERENCES memories(id) ON DELETE CASCADE
+);
+
+-- Directory summaries (for stage-1 routing)
+CREATE TABLE IF NOT EXISTS directories (
+    path TEXT PRIMARY KEY,
+    description TEXT,
+    file_count INTEGER DEFAULT 0,
+    avg_priority REAL DEFAULT 0.5,
+    last_updated TEXT NOT NULL
+);
+
+-- System metadata
+CREATE TABLE IF NOT EXISTS system_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Initialize system metadata
+INSERT OR IGNORE INTO system_meta (key, value, updated_at) VALUES
+    ('schema_version', '1', datetime('now')),
+    ('last_full_reindex', '', datetime('now')),
+    ('embedding_model', 'all-MiniLM-L6-v2', datetime('now'));
+4.2 Stats Schema (index/stats.db)
+-- Prepared for Phase 2 usage tracking
+
+-- Query log (Phase 2)
+CREATE TABLE IF NOT EXISTS query_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_text TEXT NOT NULL,
+    query_embedding BLOB,
+    timestamp TEXT NOT NULL,
+    budget INTEGER,
+    tokens_used INTEGER,
+    memories_returned INTEGER
+);
+
+-- Memory usage (Phase 2)
+CREATE TABLE IF NOT EXISTS memory_usage (
+    memory_id TEXT NOT NULL,
+    query_id INTEGER REFERENCES query_log(id),
+    relevance_score REAL,
+    was_included BOOLEAN,
+    timestamp TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_usage_memory ON memory_usage(memory_id);
+CREATE INDEX IF NOT EXISTS idx_memory_usage_timestamp ON memory_usage(timestamp);
+
+-- System stats
+CREATE TABLE IF NOT EXISTS system_stats (
+    key TEXT PRIMARY KEY,
+    value_int INTEGER,
+    value_real REAL,
+    value_text TEXT,
+    updated_at TEXT NOT NULL
+);
+
+5. Component Specifications
+5.1 File Watcher
+Module: dmm/indexer/watcher.py
+Responsibilities:
+    • Watch .dmm/memory/ directory recursively for changes 
+    • Debounce rapid changes (100ms window) 
+    • Trigger indexer on create/modify/delete 
+    • Ignore non-.md files 
+    • Ignore .dmm/memory/deprecated/ by default 
+Interface:
+class MemoryWatcher:
+    def __init__(
+        self,
+        memory_root: Path,
+        on_change: Callable[[ChangeEvent], Awaitable[None]],
+        debounce_ms: int = 100,
+        ignore_patterns: list[str] = None
+    ):
+        """
+        Initialize the file watcher.
+        
+        Args:
+            memory_root: Path to .dmm/memory/
+            on_change: Async callback for file changes
+            debounce_ms: Debounce window for rapid changes
+            ignore_patterns: Glob patterns to ignore
+        """
+        pass
+    
+    async def start(self) -> None:
+        """Start watching for changes."""
+        pass
+    
+    async def stop(self) -> None:
+        """Stop watching and cleanup."""
+        pass
+
+@dataclass
+class ChangeEvent:
+    type: Literal["created", "modified", "deleted"]
+    path: Path
+    timestamp: datetime
+Behavior:
+    1. On startup, perform full directory scan to detect changes since last run 
+    2. Use watchdog for filesystem events 
+    3. Debounce using asyncio timer 
+    4. Filter to .md files only 
+    5. Call on_change with event details 
+5.2 Parser
+Module: dmm/indexer/parser.py
+Responsibilities:
+    • Parse markdown files with YAML frontmatter 
+    • Extract title from first H1 heading 
+    • Validate frontmatter schema 
+    • Count tokens accurately 
+    • Validate file constraints (300-800 tokens) 
+Interface:
+class MemoryParser:
+    def __init__(self, token_counter: TokenCounter):
+        pass
+    
+    def parse(self, path: Path) -> Result[MemoryFile, ParseError]:
+        """
+        Parse a memory file.
+        
+        Returns:
+            Ok(MemoryFile) on success
+            Err(ParseError) on failure with details
+        """
+        pass
+    
+    def validate(self, memory: MemoryFile) -> list[ValidationWarning]:
+        """
+        Validate a parsed memory file.
+        
+        Returns warnings (not errors) for:
+        - Token count outside 300-800 range
+        - Missing optional fields
+        - Unusual tag patterns
+        """
+        pass
+
+@dataclass
+class ParseError:
+    path: Path
+    error_type: Literal["io", "yaml", "schema", "content"]
+    message: str
+    line: Optional[int] = None
+
+@dataclass  
+class ValidationWarning:
+    path: Path
+    warning_type: str
+    message: str
+    suggestion: Optional[str] = None
+Frontmatter Schema Validation:
+REQUIRED_FIELDS = {
+    "id": str,
+    "tags": list,
+    "scope": ["baseline", "global", "agent", "project", "ephemeral"],
+    "priority": float,  # 0.0 - 1.0
+    "confidence": ["experimental", "active", "stable", "deprecated"],
+    "status": ["active", "deprecated"],
+}
+
+OPTIONAL_FIELDS = {
+    "created": datetime,
+    "last_used": datetime,
+    "usage_count": int,
+    "supersedes": list,
+    "related": list,
+    "expires": datetime,
+}
+5.3 Embedder
+Module: dmm/indexer/embedder.py
+Responsibilities:
+    • Generate composite embeddings for memories 
+    • Generate directory embeddings for routing 
+    • Batch embedding for efficiency 
+    • Cache model in memory 
+Interface:
+class MemoryEmbedder:
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        """Load the embedding model."""
+        pass
+    
+    def embed_memory(self, memory: MemoryFile) -> MemoryEmbedding:
+        """
+        Generate composite embedding for a memory.
+        
+        Composite format:
+        [DIRECTORY] {directory}
+        [TITLE] {title}
+        [TAGS] {tags}
+        [SCOPE] {scope}
+        [CONTENT] {body}
+        """
+        pass
+    
+    def embed_directory(self, directory: str, description: str = "") -> list[float]:
+        """Generate embedding for a directory path."""
+        pass
+    
+    def embed_query(self, query: str) -> list[float]:
+        """Embed a query string."""
+        pass
+    
+    def embed_batch(self, memories: list[MemoryFile]) -> list[MemoryEmbedding]:
+        """Batch embed for efficiency."""
+        pass
+
+@dataclass
+class MemoryEmbedding:
+    memory_id: str
+    composite_embedding: list[float]   # 384 dims
+    directory_embedding: list[float]   # 384 dims
+    composite_text: str                # The text that was embedded
+Composite Text Construction:
+def _build_composite_text(self, memory: MemoryFile) -> str:
+    """Build the composite text for embedding."""
+    parts = [
+        f"[DIRECTORY] {memory.directory}",
+        f"[TITLE] {memory.title}",
+        f"[TAGS] {', '.join(memory.tags)}",
+        f"[SCOPE] {memory.scope.value}",
+        f"[CONTENT] {memory.body}",
+    ]
+    return "\n".join(parts)
+5.4 Store
+Module: dmm/indexer/store.py
+Responsibilities:
+    • Manage sqlite-vss database 
+    • CRUD operations for memories 
+    • Vector similarity search 
+    • Atomic updates 
+Interface:
+class MemoryStore:
+    def __init__(self, db_path: Path):
+        """Initialize database connection and load vss extension."""
+        pass
+    
+    async def initialize(self) -> None:
+        """Create tables if not exist."""
+        pass
+    
+    async def upsert_memory(
+        self, 
+        memory: MemoryFile, 
+        embedding: MemoryEmbedding
+    ) -> None:
+        """Insert or update a memory with its embedding."""
+        pass
+    
+    async def delete_memory(self, memory_id: str) -> bool:
+        """Delete a memory by ID. Returns True if deleted."""
+        pass
+    
+    async def get_memory(self, memory_id: str) -> Optional[IndexedMemory]:
+        """Retrieve a memory by ID."""
+        pass
+    
+    async def get_memory_by_path(self, path: str) -> Optional[IndexedMemory]:
+        """Retrieve a memory by file path."""
+        pass
+    
+    async def search_by_directory(
+        self,
+        query_embedding: list[float],
+        limit: int = 5
+    ) -> list[tuple[str, float]]:
+        """
+        Stage 1: Find most relevant directories.
+        
+        Returns: List of (directory_path, similarity_score)
+        """
+        pass
+    
+    async def search_by_content(
+        self,
+        query_embedding: list[float],
+        directories: list[str],
+        filters: SearchFilters,
+        limit: int = 20
+    ) -> list[tuple[IndexedMemory, float]]:
+        """
+        Stage 2: Find relevant memories within directories.
+        
+        Returns: List of (memory, similarity_score)
+        """
+        pass
+    
+    async def get_baseline_memories(self) -> list[IndexedMemory]:
+        """Get all memories with scope='baseline'."""
+        pass
+    
+    async def get_all_directories(self) -> list[DirectoryInfo]:
+        """Get directory listing with stats."""
+        pass
+
+@dataclass
+class SearchFilters:
+    scopes: Optional[list[Scope]] = None
+    exclude_deprecated: bool = True
+    min_priority: float = 0.0
+    max_token_count: Optional[int] = None
+
+@dataclass
+class DirectoryInfo:
+    path: str
+    file_count: int
+    avg_priority: float
+    scopes: list[str]
+5.5 Baseline Pack Manager
+Module: dmm/retrieval/baseline.py
+Responsibilities:
+    • Load all baseline/ memories 
+    • Cache compiled baseline pack 
+    • Regenerate on baseline changes 
+    • Enforce baseline token budget 
+Interface:
+class BaselineManager:
+    def __init__(
+        self,
+        store: MemoryStore,
+        cache_path: Path,
+        token_budget: int = 800
+    ):
+        pass
+    
+    async def get_baseline_pack(self) -> BaselinePack:
+        """
+        Get the current baseline pack.
+        
+        Returns cached version if valid, regenerates if stale.
+        """
+        pass
+    
+    async def invalidate_cache(self) -> None:
+        """Force cache regeneration on next access."""
+        pass
+    
+    async def validate_baseline_budget(self) -> BaselineValidation:
+        """
+        Check if baseline fits within budget.
+        
+        Returns warnings if over budget.
+        """
+        pass
+
+@dataclass
+class BaselinePack:
+    entries: list[MemoryPackEntry]
+    total_tokens: int
+    generated_at: datetime
+    file_hashes: dict[str, str]   # path -> hash, for cache invalidation
+
+@dataclass
+class BaselineValidation:
+    total_tokens: int
+    budget: int
+    is_valid: bool
+    overflow_files: list[str]     # Files that would need demotion
+Ordering Rules:
+    1. identity.md always first (if exists) 
+    2. hard_constraints.md second (if exists) 
+    3. Remaining files alphabetically by filename 
+5.6 Retrieval Router
+Module: dmm/retrieval/router.py
+Responsibilities:
+    • Two-stage retrieval (directory → file) 
+    • Apply filters and ranking 
+    • Respect token budget 
+    • Exclude baseline (handled separately) 
+Interface:
+class RetrievalRouter:
+    def __init__(
+        self,
+        store: MemoryStore,
+        embedder: MemoryEmbedder,
+        config: RetrievalConfig
+    ):
+        pass
+    
+    async def retrieve(
+        self,
+        query: str,
+        budget: int,
+        filters: SearchFilters
+    ) -> RetrievalResult:
+        """
+        Execute two-stage retrieval.
+        
+        1. Embed query
+        2. Find top-K directories
+        3. Search within directories
+        4. Rank and select within budget
+        """
+        pass
+
+@dataclass
+class RetrievalConfig:
+    top_k_directories: int = 3
+    max_candidates: int = 50
+    diversity_threshold: float = 0.9   # Dedup near-identical
+    
+@dataclass
+class RetrievalResult:
+    entries: list[MemoryPackEntry]
+    total_tokens: int
+    directories_searched: list[str]
+    candidates_considered: int
+    excluded_for_budget: list[str]    # Paths that didn't fit
+Ranking Algorithm:
+def _compute_rank_score(
+    self,
+    memory: IndexedMemory,
+    similarity: float
+) -> float:
+    """
+    Compute final ranking score.
+    
+    Score = (similarity * 0.6) + (priority * 0.25) + (confidence_score * 0.15)
+    
+    Confidence scores:
+        stable: 1.0
+        active: 0.8
+        experimental: 0.5
+        deprecated: 0.0 (filtered out)
+    """
+    pass
+5.7 Context Assembler
+Module: dmm/retrieval/assembler.py
+Responsibilities:
+    • Combine baseline + retrieved memories 
+    • Format as markdown 
+    • Track token accounting 
+    • Generate citations 
+Interface:
+class ContextAssembler:
+    def __init__(self, token_counter: TokenCounter):
+        pass
+    
+    def assemble(
+        self,
+        query: str,
+        baseline: BaselinePack,
+        retrieved: RetrievalResult,
+        budget: int
+    ) -> MemoryPack:
+        """
+        Assemble the final Memory Pack.
+        
+        Order:
+        1. Baseline entries (always included)
+        2. Retrieved entries (by scope: global → agent → project → ephemeral)
+        """
+        pass
+    
+    def render_markdown(self, pack: MemoryPack) -> str:
+        """Render pack as markdown string."""
+        pass
+Markdown Output Format:
+# DMM Memory Pack
+Generated: 2026-01-11T14:30:00Z
+Task: "implement user authentication"
+Baseline tokens: 650 | Retrieved tokens: 1180 | Total: 1830
+
+---
+
+## Baseline (Always Included)
+
+### [baseline/identity.md] (relevance: baseline)
+{content}
+
+### [baseline/hard_constraints.md] (relevance: baseline)
+{content}
+
+---
+
+## Retrieved Context
+
+### Global
+
+#### [global/security/password_hashing.md] (relevance: 0.89)
+{content}
+
+### Project
+
+#### [project/constraints/no_background_jobs.md] (relevance: 0.85)
+{content}
+
+#### [project/auth/session_strategy.md] (relevance: 0.82)
+{content}
+
+---
+
+## Pack Statistics
+- Baseline: 2 files, 650 tokens
+- Retrieved: 3 files, 1180 tokens
+- Budget: 2000 tokens
+- Remaining: 170 tokens
+- Excluded: 2 files (budget exceeded)
+5.8 Daemon Server
+Module: dmm/daemon/server.py
+Responsibilities:
+    • HTTP API on localhost 
+    • Handle query requests 
+    • Health endpoints 
+    • Graceful shutdown 
+API Endpoints:
+POST /query
+    Request: QueryRequest (JSON)
+    Response: QueryResponse (JSON)
+
+GET /health
+    Response: { "status": "healthy", "uptime": 123.4, "indexed_count": 42 }
+
+GET /status
+    Response: {
+        "daemon_version": "1.0.0",
+        "memory_root": "/path/to/.dmm",
+        "indexed_memories": 42,
+        "baseline_tokens": 650,
+        "last_reindex": "2026-01-11T14:30:00Z",
+        "watcher_active": true
+    }
+
+POST /reindex
+    Request: { "full": true }
+    Response: { "reindexed": 42, "errors": 0, "duration_ms": 1234 }
+FastAPI Application:
+from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await indexer.start()
+    await watcher.start()
+    yield
+    # Shutdown
+    await watcher.stop()
+    await store.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/query")
+async def query(request: QueryRequest) -> QueryResponse:
+    # Implementation
+    pass
+
+@app.get("/health")
+async def health() -> HealthResponse:
+    pass
+5.9 Daemon Lifecycle Manager
+Module: dmm/daemon/lifecycle.py
+Responsibilities:
+    • Start/stop daemon process 
+    • PID file management 
+    • Claude Code integration hooks 
+    • Health monitoring 
+Interface:
+class DaemonLifecycle:
+    def __init__(self, config: DaemonConfig):
+        pass
+    
+    async def start(self, foreground: bool = False) -> StartResult:
+        """
+        Start the daemon.
+        
+        Args:
+            foreground: If True, run in foreground (for debugging)
+        
+        Returns:
+            StartResult with PID and status
+        """
+        pass
+    
+    async def stop(self, timeout: float = 5.0) -> StopResult:
+        """
+        Stop the daemon gracefully.
+        
+        Args:
+            timeout: Seconds to wait before force kill
+        """
+        pass
+    
+    async def status(self) -> DaemonStatus:
+        """Get current daemon status."""
+        pass
+    
+    def write_pid_file(self, pid: int) -> None:
+        """Write PID to file for tracking."""
+        pass
+    
+    def read_pid_file(self) -> Optional[int]:
+        """Read PID from file."""
+        pass
+
+@dataclass
+class DaemonConfig:
+    host: str = "127.0.0.1"
+    port: int = 7433
+    pid_file: Path = Path("/tmp/dmm.pid")
+    log_file: Optional[Path] = None
+    auto_start: bool = True
+    graceful_shutdown_timeout: float = 5.0
+
+@dataclass
+class DaemonStatus:
+    running: bool
+    pid: Optional[int]
+    uptime_seconds: Optional[float]
+    health: Optional[str]  # "healthy" | "unhealthy" | "unknown"
+Claude Code Integration:
+For MVP, use wrapper script approach:
+#!/bin/bash
+# claude-code-dmm
+
+DMM_PID_FILE="/tmp/dmm-$$.pid"
+
+cleanup() {
+    dmm daemon stop --pid-file "$DMM_PID_FILE" 2>/dev/null
+}
+trap cleanup EXIT
+
+dmm daemon start --pid-file "$DMM_PID_FILE"
+claude-code "$@"
+
+6. CLI Commands
+6.1 Command Structure
+dmm
+├── query <task>              # Retrieve Memory Pack
+│   --budget <int>            # Token budget (default: 2000)
+│   --baseline-budget <int>   # Baseline budget (default: 800)
+│   --scope <scope>           # Filter by scope
+│   --exclude-ephemeral       # Exclude ephemeral memories
+│   --output <path>           # Save pack to file
+│   --verbose                 # Include scores and stats
+│
+├── daemon                    # Daemon management
+│   ├── start                 # Start daemon
+│   │   --foreground          # Run in foreground
+│   │   --pid-file <path>     # PID file location
+│   ├── stop                  # Stop daemon
+│   │   --pid-file <path>
+│   └── status                # Check daemon status
+│
+├── reindex                   # Trigger reindex
+│   --full                    # Force full reindex
+│
+├── validate                  # Validate memory files
+│   --fix                     # Auto-fix where possible
+│
+└── status                    # System status
+    --json                    # Output as JSON
+6.2 Example Usage
+# Start daemon
+$ dmm daemon start
+DMM daemon started (PID: 12345)
+Listening on http://127.0.0.1:7433
+
+# Query for memory
+$ dmm query "implement user authentication with OAuth"
+# DMM Memory Pack
+Generated: 2026-01-11T14:30:00Z
+Task: "implement user authentication with OAuth"
+...
+
+# Query with options
+$ dmm query "debug async issue" --budget 1500 --scope project --verbose
+
+# Check status
+$ dmm status
+DMM Status
+──────────────────────────────
+Daemon:          running (PID: 12345)
+Memory root:     /home/user/project/.dmm
+Indexed:         42 memories
+Baseline:        4 files, 650 tokens
+Last reindex:    2 minutes ago
+Watcher:         active
+
+# Validate memories
+$ dmm validate
+Validating .dmm/memory/...
+✓ 40 files valid
+⚠ 2 warnings:
+  - project/old_note.md: Token count 892 exceeds recommended 800
+  - ephemeral/temp.md: Missing 'expires' field for ephemeral scope
+
+# Stop daemon
+$ dmm daemon stop
+DMM daemon stopped
+
+7. Configuration
+7.1 Configuration File
+.dmm/daemon.config.json:
+{
+  "version": "1.0",
+  
+  "daemon": {
+    "host": "127.0.0.1",
+    "port": 7433,
+    "auto_start": true,
+    "graceful_shutdown_timeout_ms": 5000,
+    "log_level": "info"
+  },
+  
+  "indexer": {
+    "watch_interval_ms": 1000,
+    "debounce_ms": 100,
+    "embedding_model": "all-MiniLM-L6-v2",
+    "batch_size": 50
+  },
+  
+  "retrieval": {
+    "top_k_directories": 3,
+    "max_candidates": 50,
+    "diversity_threshold": 0.9,
+    "default_budget": 2000,
+    "baseline_budget": 800
+  },
+  
+  "storage": {
+    "embeddings_db": "index/embeddings.db",
+    "stats_db": "index/stats.db"
+  },
+  
+  "validation": {
+    "min_tokens": 300,
+    "max_tokens": 800,
+    "warn_on_missing_optional": true
+  }
+}
+7.2 Default Configuration
+If no config file exists, use sensible defaults. Config file is optional for MVP.
+
+8. Boot and Policy Files
+8.1 BOOT.md Template
+# DMM Boot Instructions
+
+You have access to a Dynamic Markdown Memory (DMM) system that provides 
+relevant context for your tasks without loading everything into context.
+
+## What You Always Have
+
+Every Memory Pack includes the **Baseline Pack**—critical context that applies 
+to all tasks. This is automatically included; you don't need to query for it.
+
+Baseline contains:
+- Your identity and role for this project
+- Hard constraints that must never be violated
+- Foundational decisions and terminology
+
+## How to Retrieve Additional Memory
+
+When you need context beyond baseline, request a Memory Pack:
+
+dmm query "<describe your task or question>" --budget 1200
+
+This returns a compiled pack with:
+- Baseline memories (always included)
+- Retrieved memories (semantically relevant to your query)
+- File paths for traceability
+
+## When to Retrieve
+
+Request a Memory Pack:
+- **At task start** — if baseline doesn't cover your needs
+- **When switching domains** — e.g., from auth to database work  
+- **After a failure** — you may be missing relevant context
+- **Before final outputs** — ensure you have all constraints
+
+## What NOT to Do
+
+- Don't assume memories exist without querying
+- Don't query for things already in your baseline
+- Don't ignore constraints from retrieved memories
+
+## Current Limitations (Phase 1)
+
+In this phase, you can only **read** memories. Writing, updating, and 
+deprecating memories will be available in Phase 2.
+
+If you discover something that should be remembered:
+- Note it in your response to the user
+- Suggest it should be added to memory
+- The user can manually create the memory file
+8.2 policy.md Template
+# DMM Policy
+
+## Memory Retrieval Policy
+
+### Retrieval Triggers
+Retrieve a Memory Pack when:
+1. Starting a new task (if baseline is insufficient)
+2. Switching to a different domain or subsystem
+3. Encountering unexpected behavior or failures
+4. Before producing final deliverables
+
+### Retrieval Guidelines
+- Query with clear, specific descriptions of your task
+- Include relevant technical terms in your query
+- Request larger budgets for complex, multi-domain tasks
+- Request smaller budgets for focused, single-domain tasks
+
+## Token Budget Guidelines
+
+| Task Type | Recommended Budget |
+|-----------|-------------------|
+| Quick question | 1000 |
+| Standard task | 1500 |
+| Complex task | 2000 |
+| Multi-domain | 2500 |
+
+Baseline always uses 800 tokens (reserved).
+
+## Scope Meanings
+
+| Scope | Meaning | Retrieval Behavior |
+|-------|---------|-------------------|
+| baseline | Critical, always-relevant | Always included |
+| global | Stable, cross-project truths | Retrieved when relevant |
+| agent | Behavioral rules for the agent | Retrieved when relevant |
+| project | Project-specific context | Retrieved when relevant |
+| ephemeral | Temporary findings | Retrieved when relevant; may expire |
+| deprecated | Outdated memories | Never retrieved (archived) |
+
+## Phase 1 Limitations
+
+Write operations are not available in Phase 1. If you need to record 
+new information, instruct the user to:
+
+1. Create a new file in `.dmm/memory/{appropriate_scope}/`
+2. Use the required frontmatter schema
+3. Keep content between 300-800 tokens
+4. One concept per file
+
+9. Testing Strategy
+9.1 Unit Tests
+Component	Test Cases
+Parser	Valid frontmatter, invalid frontmatter, missing fields, title extraction, token counting
+Embedder	Composite text construction, batch embedding, dimension verification
+Store	CRUD operations, vector search, filtering, concurrent access
+BaselineManager	Cache hit, cache miss, invalidation, budget validation
+Router	Two-stage retrieval, ranking, budget cutoff, diversity
+Assembler	Ordering, markdown format, token accounting
+9.2 Integration Tests
+Scenario	Description
+Full query flow	Query → Router → Assembler → Pack
+File change detection	Create file → Watch → Index → Available in query
+Baseline guarantee	Every query includes baseline
+Budget enforcement	Large result set respects budget
+Daemon lifecycle	Start → Query → Stop → Restart
+9.3 Test Fixtures
+Create a test memory directory with known content:
+tests/fixtures/.dmm/
+├── memory/
+│   ├── baseline/
+│   │   ├── identity.md          # 150 tokens
+│   │   └── hard_constraints.md  # 200 tokens
+│   ├── global/
+│   │   ├── coding_style.md      # 400 tokens
+│   │   └── security_rules.md    # 350 tokens
+│   ├── project/
+│   │   ├── architecture.md      # 500 tokens
+│   │   └── constraints.md       # 400 tokens
+│   └── ephemeral/
+│       └── temp_finding.md      # 300 tokens
+└── daemon.config.json
+9.4 Performance Benchmarks
+Metric	Target
+Index single file	< 500ms
+Full reindex (100 files)	< 10s
+Query response time	< 200ms
+Daemon startup	< 2s
+Memory usage (100 files)	< 200MB
+
+10. Deliverables Checklist
+10.1 Code Deliverables
+    • [ ] dmm CLI tool with query, daemon, reindex, validate, status commands 
+    • [ ] File watcher with debouncing 
+    • [ ] Markdown parser with frontmatter validation 
+    • [ ] Composite embedding generator 
+    • [ ] sqlite-vss storage layer 
+    • [ ] Two-stage retrieval router 
+    • [ ] Baseline Pack manager with caching 
+    • [ ] Context assembler with markdown output 
+    • [ ] FastAPI daemon server 
+    • [ ] Lifecycle manager with PID file support 
+    • [ ] Claude Code wrapper script 
+10.2 Configuration Deliverables
+    • [ ] daemon.config.json schema and defaults 
+    • [ ] .dmm/BOOT.md template 
+    • [ ] .dmm/policy.md template 
+    • [ ] Example memory files for each scope 
+10.3 Documentation Deliverables
+    • [ ] README with quick start 
+    • [ ] CLI reference 
+    • [ ] Memory file format specification 
+    • [ ] Troubleshooting guide 
+10.4 Test Deliverables
+    • [ ] Unit test suite (>80% coverage) 
+    • [ ] Integration test suite 
+    • [ ] Performance benchmark suite 
+    • [ ] Test fixtures 
+
+11. Phase 2 Preparation
+11.1 Interfaces for Phase 2
+Phase 1 establishes these interfaces that Phase 2 (Write-Back + Review) will extend:
+Interface	Phase 1 State	Phase 2 Extension
+POST /query	Implemented	No change
+POST /write	Not implemented	Add endpoint
+POST /review	Not implemented	Add endpoint
+index/stats.db	Schema created, empty	Populated by usage tracking
+memories.usage_count	Column exists, always 0	Updated on retrieval
+memories.last_used_at	Column exists, null	Updated on retrieval
+11.2 Hooks for Phase 2
+The following extension points are designed for Phase 2:
+# In retrieval/router.py
+async def retrieve(self, query: str, ...) -> RetrievalResult:
+    result = await self._do_retrieval(query, ...)
+    
+    # Phase 2 hook: log usage
+    # await self.usage_tracker.log(query, result)
+    
+    return result
+
+# In daemon/server.py
+# Phase 2 will add:
+# @app.post("/write/propose")
+# @app.post("/review/process")
+# @app.get("/review/list")
+11.3 Schema Forward Compatibility
+The database schema includes columns that Phase 1 doesn't populate but Phase 2 requires:
+    • memories.last_used_at — null in Phase 1 
+    • memories.usage_count — 0 in Phase 1 
+    • stats.db tables — empty in Phase 1 
+This avoids schema migrations between phases.
+
+12. Risk Mitigation
+Risk	Probability	Impact	Mitigation
+sqlite-vss installation issues	Medium	High	Document installation; provide fallback to brute-force search
+Embedding model download slow	Low	Medium	Cache model; document first-run behavior
+File watcher misses events	Low	Medium	Full reindex on startup; manual reindex command
+Token counting inaccuracy	Low	Low	Use tiktoken; add buffer to budgets
+Daemon port conflict	Low	Low	Configurable port; clear error message
+
+13. Success Metrics
+13.1 Functional Metrics
+Metric	Target	Measurement
+Baseline inclusion rate	100%	Every query includes baseline
+Query success rate	>99%	Queries return valid packs
+Index freshness	<5s	Time from file change to indexed
+13.2 Performance Metrics
+Metric	Target	Measurement
+Query latency (p50)	<100ms	Daemon logs
+Query latency (p99)	<500ms	Daemon logs
+Index throughput	>10 files/s	Benchmark
+Memory footprint	<200MB	Process stats
+13.3 Usability Metrics
+Metric	Target	Measurement
+Zero-config startup	Yes	Works without config file
+Clear error messages	Yes	Manual review
+CLI response time	<1s	Perceived latency
+
+End of PRD Phase 1
+Next: PRD Phase 2 — Write-Back Engine + Reviewer Agent
+

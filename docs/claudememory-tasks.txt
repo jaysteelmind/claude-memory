@@ -1,0 +1,32 @@
+DMM Platform:
+Dynamic Markdown Memory (DMM) is a file-native cognitive memory system for AI agents that replaces monolithic instruction files with a semantic, hierarchical collection of atomic markdown micro-files (300-800 tokens each), enabling agents to retrieve only the context relevant to their current task rather than loading everything into the context window. The system uses composite embeddings (combining file path, title, tags, and content) with two-stage retrieval (directory-level filtering, then file-level ranking) to assemble token-budgeted "Memory Packs" that always include a guaranteed Baseline Pack of critical context. Agents can propose new memories through a quality-controlled write-back pipeline validated by a Reviewer Agent, while a Conflict Detector proactively identifies contradictions between memories using tag overlap analysis, semantic similarity clustering, and supersession chain validation. All memories live as auditable .md files in the repository, providing full Git-based version control, and the system runs as a daemon that starts and stops with Claude Code, exposing a simple CLI (dmm query, dmm write, dmm conflicts) for agent interaction.
+
+
+What we have:
+master document
+prd document 1 
+prd document 2 
+prd document 3 
+project folder in ~/projects/claude-memory
+project folder is created and git repo is initialized
+Use poetry for dependencies if needed.
+
+What we want:
+implement prd 1
+
+How to work:
+I am using a Linux terminal
+Use cat and sed commands to automate code addition and modification.
+make sure you specify if an environment is required to be activated or deactivated.
+If cat and sed commands are failing use a temp python script to add or change the code and delete the temp script at the end to keep everything clean.
+Store and organize all test files after the tests pass in a test folder for this module.
+We are creating code in the top 2 percentile in sophistication.
+Do not create any temporary fix or mock results.
+Include a syntax check in any code additon or modification.
+We want production ready fix and level 10 engineer code.
+Give and track token usage after each completed section.
+Do not give expected outputs when giving code.
+Include the syntax check in the code, chain the syntax check directly with the cat command using && so it's a single operation
+Do not include any emojis in the code, including testing.
+
+Before we start confirm you understand the task.

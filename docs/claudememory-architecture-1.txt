@@ -1,0 +1,272 @@
+﻿Architecture Document — Dynamic Markdown Memory for Agent-Based AI (DMM)
+Working name: DMM (Dynamic Markdown Memory)
+Purpose: Replace monolithic instruction files (e.g., claude.md) with a semantic, hierarchical, micro-markdown memory system that an agent can read, search, and write back to throughout a project—while minimizing context usage.
+1) Goals
+Primary goals
+    • Context efficiency: Load only the most relevant memory fragments for a task.
+    • File-native memory: Memory exists as .md files in the repo (or adjacent workspace), auditable via Git.
+    • Agent-operable: Claude (or any agent) can:
+        ◦ read memory rules at launch,
+        ◦ retrieve relevant memory,
+        ◦ write updates / new memory,
+        ◦ deprecate stale memory,
+        ◦ track usage.
+    • Deterministic-ish assembly: Memory inclusion should be predictable, budgeted, and structured.
+Non-goals (initially)
+    • Full knowledge graph reasoning
+    • Heavy ontology systems
+    • Complex “AI writes everywhere” without guardrails
+    • Long-term personal memory across repos (can be Phase 2/3)
+2) System Overview
+DMM is composed of:
+    1. Memory Filesystem (markdown micro-files + directory semantics)
+    2. Memory Instruction + Policy Layer (the boot instruction Claude reads)
+    3. Semantic Index (embeddings + metadata)
+    4. Retrieval Router (two-stage: directory selection → file selection)
+    5. Context Assembler (token-budgeted compilation into a “Memory Pack”)
+    6. Write-Back Engine (create/update/deprecate with change discipline)
+    7. Telemetry + Governance (usage counts, recency, confidence, promotion/demotion)
+At runtime, the agent never “loads memory.”
+Instead it requests a Memory Pack compiled for the current task.
+3) Repository Layout
+3.1 Memory root
+A conventional structure that encodes meaning:
+.dmm/
+├── BOOT.md
+├── policy.md
+├── index/
+│   ├── manifest.json
+│   ├── embeddings.db            # or qdrant/sqlite/duckdb
+│   └── stats.db                 # usage + lifecycle info
+├── memory/
+│   ├── global/
+│   ├── agent/
+│   ├── project/
+│   ├── ephemeral/
+│   └── deprecated/
+└── packs/
+    └── last_pack.md             # optional: cached compiled pack
+3.2 Directory semantics (must be enforced)
+    • global/: stable truths, long-lived conventions
+    • agent/: how the agent behaves (tone, rules, workflows)
+    • project/: project-specific decisions, constraints, scope
+    • ephemeral/: short-lived findings (expire unless promoted)
+    • deprecated/: excluded by default
+This is critical because directory is the first-stage filter.
+4) Micro-Markdown File Specification
+Each memory file is an atomic unit.
+4.1 File format
+Each file is Markdown, optionally with minimal YAML front-matter:
+---
+id: mem_2026_01_11_001
+tags: [build, constraints]
+scope: project
+priority: 0.8
+confidence: stable
+status: active
+---
+
+# Constraint: No background jobs
+We do not claim asynchronous execution. Deliver in-response.
+4.2 File constraints
+    • Target size: 100–400 tokens
+    • Single concept / rule / procedure per file
+    • Must be self-contained and human readable
+    • Must be safe to insert into context without extra dependencies
+5) Boot Instruction for Claude (Launch Contract)
+You required: Claude must launch and read an instruction for the memory, so it can continuously search and write back.
+5.1 Boot file
+./.dmm/BOOT.md is the only static file you need to load initially (or referenced from claude.md).
+BOOT.md responsibilities:
+    • Define what DMM is
+    • Define how to retrieve memory (API/CLI contract)
+    • Define write-back rules and safety constraints
+    • Define “when to retrieve” triggers
+    • Define “what to do if memory is missing/uncertain”
+    • Define token budget policy
+5.2 Claude launch flow
+There are two supported patterns:
+Pattern A: Claude Code / Tooling can read files
+    • claude.md contains only:
+        ◦ “Read .dmm/BOOT.md first”
+        ◦ “Use DMM operations”
+    • Agent then reads BOOT and proceeds.
+Pattern B: Wrapper runtime (recommended)
+    • A small runner (CLI) injects:
+        1. BOOT.md
+        2. Memory Pack (compiled per task)
+    • This avoids relying on manual file reading by the agent.
+Either way, BOOT.md is authoritative.
+6) Runtime Architecture
+6.1 Components
+A) Indexer
+    • Watches .dmm/memory/**.md
+    • Parses:
+        ◦ title + headings
+        ◦ body
+        ◦ path
+        ◦ front-matter metadata
+    • Generates embeddings
+    • Stores:
+        ◦ vectors
+        ◦ metadata
+        ◦ directory labels
+        ◦ lifecycle fields
+        ◦ usage stats
+B) Retrieval Router (Two-stage)
+Stage 1: Directory selection
+    • Embed the task/query
+    • Rank directories by relevance:
+        ◦ directory name
+        ◦ directory descriptor file (optional)
+        ◦ historical usage patterns
+Stage 2: File selection within chosen directories
+    • Rank micro-files by:
+        ◦ semantic similarity
+        ◦ priority
+        ◦ recency/usage
+        ◦ scope alignment
+        ◦ status != deprecated
+    • Return top N within a token budget
+C) Context Assembler
+Takes retrieval output and compiles:
+Memory Pack format
+# DMM Memory Pack (auto-assembled)
+## Global
+- [path] snippet...
+
+## Project
+- [path] snippet...
+
+## Agent Rules
+- [path] snippet...
+Rules:
+    • Ordered: global → agent → project → ephemeral
+    • Hard token cap
+    • Deduplicate overlapping memories
+    • Provide citations to file paths for traceability
+D) Write-Back Engine
+Supports operations:
+    • create_memory(path, content, metadata)
+    • update_memory(path, patch)
+    • deprecate_memory(path, reason)
+    • promote_memory(path, new_scope)
+    • log_usage(paths, context)
+Write discipline:
+    • No uncontrolled edits to many files
+    • Prefer:
+        ◦ create new micro-file
+        ◦ then optionally link to older
+    • Changes should be “atomic + explainable”
+    • Every update includes a short “why” note
+E) Governance & Telemetry
+Tracks:
+    • last_used timestamp
+    • usage_count
+    • success association (optional)
+    • lifecycle state transitions
+Enables automatic cleanup:
+    • Ephemeral expires unless promoted
+    • Stale memories demoted
+    • Conflicting files flagged
+7) Required Interfaces (CLI/API)
+To make Claude reliably use this, DMM should expose a small tool surface.
+7.1 Query
+dmm query "<task or question>" --budget 1200 --scope project
+Returns:
+    • pack.md
+    • list of file paths included
+    • relevance scores (optional)
+7.2 Write-back
+dmm write create --path ".dmm/memory/project/constraints/no_background_jobs.md" --from-stdin
+dmm write update --path ".../python_style.md" --patch "..."
+dmm write deprecate --path ".../old_rule.md" --reason "superseded by ..."
+7.3 Maintenance
+    • dmm reindex
+    • dmm validate (checks file size, front-matter schema, duplicates)
+    • dmm status (health + stale items)
+Key: The agent shouldn’t “invent” how to do memory ops.
+BOOT.md defines these exact commands.
+8) Agent Behavior Rules (Critical)
+These rules should exist in .dmm/policy.md and summarized in BOOT:
+8.1 When to retrieve memory
+Retrieve a Memory Pack:
+    • at task start
+    • when switching subtopic/domain
+    • after a failure or contradiction
+    • before writing final outputs that depend on project rules
+8.2 When to write memory
+Write/update memory when:
+    • a new durable rule is discovered
+    • a decision is made (architecture, naming, constraints)
+    • a repeated fix occurs (turn it into a procedure)
+    • an assumption is corrected
+8.3 What NOT to write
+    • transient chat fluff
+    • raw logs (store elsewhere)
+    • anything sensitive not intended for repo
+8.4 Conflict handling
+If two memories conflict:
+    • do not silently choose one
+    • create a “conflict” memory file referencing both
+    • recommend a resolution
+    • deprecate the losing rule once resolved
+9) Data Stores (Options)
+Minimal MVP
+    • sqlite (metadata + embeddings via sqlite-vss, or store vectors externally)
+    • duckdb for local analytic queries
+    • embeddings stored as blobs or as a separate vector index file
+Scalable
+    • Qdrant / LanceDB / Chroma (local)
+    • optional remote vector store (later)
+MVP should be local-first.
+10) Security & Safety
+    • Memory directory is explicit allowlist
+    • Write-back restricted to .dmm/memory/**
+    • Require file validation before index
+    • Enforce max file size to prevent “giant memory blob” regression
+    • Git-based audit trail is a feature, not a side effect
+11) Failure Modes & Mitigations
+Failure: “Too many relevant files”
+Mitigation:
+    • directory-first routing
+    • strict token budget
+    • diversity selection (avoid redundant near-duplicates)
+Failure: “Agent starts hallucinating new memory”
+Mitigation:
+    • BOOT forbids assuming memory exists
+    • Writes require explicit reason + file path
+    • Validate writes before accepting them
+Failure: “Memory gets stale and contradictory”
+Mitigation:
+    • lifecycle states
+    • usage stats + recency decay
+    • conflict file pattern + deprecation workflow
+12) MVP Build Plan
+MVP-1 (1–2 weeks of build time in real life; but here’s the plan)
+    • Define .dmm/BOOT.md and .dmm/policy.md
+    • Implement:
+        ◦ indexer
+        ◦ query → pack assembly
+        ◦ write create/update/deprecate
+    • Validate:
+        ◦ size limits
+        ◦ schema
+        ◦ directory semantics
+MVP-2
+    • Add:
+        ◦ usage tracking
+        ◦ promotion/demotion
+        ◦ conflict detection
+MVP-3
+    • Multi-agent support:
+        ◦ per-agent memory namespaces
+        ◦ merge rules
+        ◦ shared memory governance
+13) Deliverables
+    • .dmm/BOOT.md — the launch instruction Claude must read
+    • .dmm/policy.md — guardrails + write-back discipline
+    • dmm CLI tool (or equivalent)
+    • memory_pack.md output format spec
+    • Memory directory structure + micro-file schema
+

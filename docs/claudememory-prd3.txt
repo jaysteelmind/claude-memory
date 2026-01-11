@@ -1,0 +1,1870 @@
+﻿PRD Phase 3: Conflict Detection System
+Product Requirements Document
+Version: 1.0
+Status: Draft
+Target Duration: 1-2 weeks
+Dependencies: PRD Phase 1 (Core System), PRD Phase 2 (Write-Back + Reviewer)
+
+1. Executive Summary
+1.1 Purpose
+This PRD defines the third and final core phase of the Dynamic Markdown Memory (DMM) system: the Conflict Detection System. This phase adds proactive detection of contradictory, duplicate, or superseding memories, along with a structured workflow for resolving conflicts.
+1.2 The Problem
+As the memory store grows, memories will inevitably conflict:
+    • Contradictory rules: "Use tabs" vs. "Use 4 spaces" 
+    • Stale supersession: New decision made but old memory not deprecated 
+    • Scope drift: Same concept documented in multiple scopes 
+    • Evolving context: Decisions that were correct become incorrect 
+Without detection, agents will receive conflicting guidance and make inconsistent decisions. The Reviewer Agent (Phase 2) catches duplicates at write time, but cannot detect conflicts between existing memories or contradictions that emerge over time.
+1.3 Phase 1 & 2 Dependencies
+Phase 3 requires the following from earlier phases:
+Phase	Dependency	Usage in Phase 3
+1	MemoryStore	Query memories for conflict analysis
+1	MemoryEmbedder	Compute similarity for clustering
+1	Composite embeddings	Enable semantic similarity detection
+2	CommitEngine	Hook for post-commit conflict scan
+2	ReviewerAgent	Extend to flag potential conflicts
+2	UsageTracker	Identify co-retrieved conflicting memories
+2	index/conflicts.db schema	Populate with detected conflicts
+2	Memory related field	Use for explicit relationship checking
+2	Memory supersedes field	Detect supersession chains
+1.4 Success Criteria
+Phase 3 is complete when:
+    1. The system proactively detects contradictory memories using multiple methods 
+    2. Detected conflicts are persisted with full context and confidence scores 
+    3. Agents can query for conflicts affecting their current task 
+    4. A resolution workflow allows deprecation, merging, clarification, or dismissal 
+    5. New writes trigger incremental conflict scans 
+    6. Periodic full scans catch conflicts that emerge over time 
+    7. The Reviewer Agent flags potential conflicts during write review 
+1.5 Out of Scope (Deferred to Phase 4+)
+Feature	Deferred To
+Multi-agent memory namespaces	Phase 4
+Cross-repo memory sharing	Phase 4
+Automatic conflict resolution (without human input)	Phase 4
+Conflict prevention (block writes that would conflict)	Phase 4
+Machine learning-based conflict prediction	Future
+1.6 System Completion
+Phase 3 completes the core DMM system. After this phase:
+Capability	Status
+Memory storage and retrieval	✅ Complete (Phase 1)
+Baseline Pack guarantee	✅ Complete (Phase 1)
+Composite embeddings	✅ Complete (Phase 1)
+Daemon lifecycle	✅ Complete (Phase 1)
+Write-back with review	✅ Complete (Phase 2)
+Usage tracking	✅ Complete (Phase 2)
+Conflict detection	✅ Complete (Phase 3)
+Conflict resolution	✅ Complete (Phase 3)
+
+2. System Architecture
+2.1 Phase 3 Component Diagram
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       DMM Phase 3 Components                                 │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                      Conflict Detection Engine                       │   │
+│  │                                                                      │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │   │
+│  │  │    Tag      │  │  Semantic   │  │ Supersession│  │   Rule     │ │   │
+│  │  │   Overlap   │  │  Clustering │  │   Chain     │  │ Extraction │ │   │
+│  │  │  Analyzer   │  │  Analyzer   │  │  Analyzer   │  │  Analyzer  │ │   │
+│  │  │             │  │             │  │             │  │            │ │   │
+│  │  │ - Group by  │  │ - Embed all │  │ - Follow    │  │ - Extract  │ │   │
+│  │  │   tags      │  │ - Cluster   │  │   supersedes│  │   rules    │ │   │
+│  │  │ - Find      │  │ - Find high │  │ - Detect    │  │ - Compare  │ │   │
+│  │  │   conflicts │  │   similarity│  │   orphans   │  │   logic    │ │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └────────────┘ │   │
+│  │         │                │                │                │        │   │
+│  │         └────────────────┴────────────────┴────────────────┘        │   │
+│  │                                   │                                  │   │
+│  │                                   ▼                                  │   │
+│  │                        ┌─────────────────────┐                      │   │
+│  │                        │  Conflict Merger    │                      │   │
+│  │                        │                     │                      │   │
+│  │                        │  - Deduplicate      │                      │   │
+│  │                        │  - Score confidence │                      │   │
+│  │                        │  - Persist records  │                      │   │
+│  │                        └─────────────────────┘                      │   │
+│  │                                                                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                      Conflict Resolution Engine                      │   │
+│  │                                                                      │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │   │
+│  │  │  Deprecate  │  │    Merge    │  │   Clarify   │  │  Dismiss   │ │   │
+│  │  │  Strategy   │  │  Strategy   │  │  Strategy   │  │  Strategy  │ │   │
+│  │  │             │  │             │  │             │  │            │ │   │
+│  │  │ - Mark old  │  │ - Combine   │  │ - Add scope │  │ - False    │ │   │
+│  │  │ - Update    │  │   content   │  │ - Add       │  │   positive │ │   │
+│  │  │   supersedes│  │ - Single    │  │   conditions│  │ - Ignore   │ │   │
+│  │  └─────────────┘  │   memory    │  └─────────────┘  └────────────┘ │   │
+│  │                   └─────────────┘                                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │  Scan Triggers  │    │  Extended API   │    │  Extended CLI           │ │
+│  │                 │    │                 │    │                         │ │
+│  │  - Post-commit  │    │  GET /conflicts │    │  dmm conflicts scan     │ │
+│  │  - Periodic     │    │  POST /resolve  │    │  dmm conflicts list     │ │
+│  │  - Manual       │    │  GET /check     │    │  dmm conflicts resolve  │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+2.2 Conflict Detection Flow
+┌──────────────────┐
+│  Trigger Event   │
+│                  │
+│ - New commit     │
+│ - Periodic scan  │
+│ - Manual request │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  Tag Overlap     │     │    Semantic      │     │  Supersession    │
+│  Analysis        │     │    Clustering    │     │  Chain Analysis  │
+│                  │     │                  │     │                  │
+│  Find memories   │     │  Find memories   │     │  Find broken     │
+│  with shared     │     │  with high       │     │  supersession    │
+│  tags + opposite │     │  similarity +    │     │  chains          │
+│  conclusions     │     │  different       │     │                  │
+│                  │     │  conclusions     │     │                  │
+└────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘
+         │                        │                        │
+         └────────────────────────┼────────────────────────┘
+                                  │
+                                  ▼
+                       ┌──────────────────┐
+                       │  Rule Extraction │
+                       │  (Optional LLM)  │
+                       │                  │
+                       │  For candidate   │
+                       │  conflicts,      │
+                       │  extract and     │
+                       │  compare rules   │
+                       └────────┬─────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │  Conflict Merger │
+                       │                  │
+                       │  - Deduplicate   │
+                       │  - Assign IDs    │
+                       │  - Score         │
+                       │  - Classify      │
+                       │  - Persist       │
+                       └────────┬─────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │  Conflict Store  │
+                       │                  │
+                       │  conflicts.db    │
+                       └──────────────────┘
+2.3 Implementation Directory Structure (Additions)
+src/dmm/
+├── ... (Phase 1 & 2 components)
+├── conflicts/
+│   ├── __init__.py
+│   ├── detector.py              # Main conflict detection orchestrator
+│   ├── analyzers/
+│   │   ├── __init__.py
+│   │   ├── tag_overlap.py       # Tag-based conflict detection
+│   │   ├── semantic.py          # Embedding similarity detection
+│   │   ├── supersession.py      # Supersession chain analysis
+│   │   └── rule_extraction.py   # LLM-based rule comparison
+│   ├── merger.py                # Dedupe and merge conflict candidates
+│   ├── store.py                 # Conflict persistence
+│   ├── resolver.py              # Resolution strategy execution
+│   └── scanner.py               # Scan scheduling and triggers
+└── cli/
+    ├── ... (Phase 1 & 2 commands)
+    └── conflicts.py             # dmm conflicts commands
+
+3. Data Models
+3.1 Conflict Model
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+class ConflictType(Enum):
+    CONTRADICTORY = "contradictory"      # Opposite conclusions on same topic
+    DUPLICATE = "duplicate"              # Same content, different files
+    SUPERSESSION = "supersession"        # One should supersede another
+    SCOPE_OVERLAP = "scope_overlap"      # Same content in multiple scopes
+    STALE = "stale"                      # One is outdated version of another
+
+class ConflictStatus(Enum):
+    UNRESOLVED = "unresolved"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+class ResolutionAction(Enum):
+    DEPRECATE = "deprecate"              # Deprecate one memory
+    MERGE = "merge"                      # Combine into single memory
+    CLARIFY = "clarify"                  # Add conditions/scope to both
+    DISMISS = "dismiss"                  # Mark as false positive
+    DEFER = "defer"                      # Needs more context
+
+class DetectionMethod(Enum):
+    TAG_OVERLAP = "tag_overlap"
+    SEMANTIC_SIMILARITY = "semantic_similarity"
+    SUPERSESSION_CHAIN = "supersession_chain"
+    RULE_EXTRACTION = "rule_extraction"
+    MANUAL = "manual"
+    CO_RETRIEVAL = "co_retrieval"        # Detected via usage patterns
+
+@dataclass
+class ConflictMemory:
+    """A memory involved in a conflict."""
+    memory_id: str
+    path: str
+    title: str
+    summary: str                         # Brief description of content
+    scope: str
+    priority: float
+    role: str                            # "primary" | "secondary"
+    
+    # For context
+    key_claims: list[str] = field(default_factory=list)
+    last_modified: Optional[datetime] = None
+
+@dataclass
+class Conflict:
+    """A detected conflict between memories."""
+    
+    # Identity
+    conflict_id: str                     # conflict_YYYYMMDD_HHMMSS_XXXX
+    
+    # Involved memories
+    memories: list[ConflictMemory]
+    
+    # Classification
+    type: ConflictType
+    detection_method: DetectionMethod
+    confidence: float                    # 0.0 - 1.0
+    
+    # Description
+    description: str                     # Human-readable explanation
+    evidence: str                        # Specific contradicting text
+    
+    # Status
+    status: ConflictStatus = ConflictStatus.UNRESOLVED
+    detected_at: datetime = field(default_factory=datetime.utcnow)
+    
+    # Resolution (when resolved)
+    resolved_at: Optional[datetime] = None
+    resolution_action: Optional[ResolutionAction] = None
+    resolution_target: Optional[str] = None    # Memory ID affected
+    resolution_reason: Optional[str] = None
+    resolved_by: Optional[str] = None          # "agent" | "human" | "system"
+    
+    # Metadata
+    scan_id: Optional[str] = None              # Which scan detected this
+    suppressed_until: Optional[datetime] = None # Temporarily hidden
+
+@dataclass
+class ConflictCandidate:
+    """A potential conflict before final classification."""
+    memory_ids: tuple[str, str]
+    detection_method: DetectionMethod
+    raw_score: float                     # Method-specific score
+    evidence: dict                       # Method-specific evidence
+3.2 Scan Models
+@dataclass
+class ScanRequest:
+    """Request for a conflict scan."""
+    scan_type: str                       # "full" | "incremental" | "targeted"
+    target_memory_id: Optional[str] = None    # For targeted scan
+    methods: list[DetectionMethod] = field(
+        default_factory=lambda: [
+            DetectionMethod.TAG_OVERLAP,
+            DetectionMethod.SEMANTIC_SIMILARITY,
+            DetectionMethod.SUPERSESSION_CHAIN
+        ]
+    )
+    include_rule_extraction: bool = False     # LLM-based (slower)
+    
+@dataclass
+class ScanResult:
+    """Result of a conflict scan."""
+    scan_id: str
+    scan_type: str
+    started_at: datetime
+    completed_at: datetime
+    duration_ms: int
+    
+    # Scope
+    memories_scanned: int
+    methods_used: list[str]
+    
+    # Results
+    conflicts_detected: int
+    conflicts_new: int                   # Not previously detected
+    conflicts_existing: int              # Already known
+    
+    # By type
+    by_type: dict[str, int]
+    by_method: dict[str, int]
+    
+    # Errors
+    errors: list[str]
+3.3 Resolution Models
+@dataclass
+class ResolutionRequest:
+    """Request to resolve a conflict."""
+    conflict_id: str
+    action: ResolutionAction
+    
+    # Action-specific parameters
+    target_memory_id: Optional[str] = None    # For DEPRECATE
+    merged_content: Optional[str] = None      # For MERGE
+    clarification: Optional[str] = None       # For CLARIFY
+    dismiss_reason: Optional[str] = None      # For DISMISS
+    
+    # Metadata
+    resolved_by: str = "agent"
+    reason: str = ""
+
+@dataclass
+class ResolutionResult:
+    """Result of a resolution attempt."""
+    success: bool
+    conflict_id: str
+    action_taken: ResolutionAction
+    
+    # What changed
+    memories_modified: list[str]
+    memories_deprecated: list[str]
+    memories_created: list[str]
+    
+    # Errors
+    error: Optional[str] = None
+
+4. Database Schema
+4.1 Conflicts Schema (index/conflicts.db)
+-- Extend schema from Phase 2
+
+-- Main conflicts table
+CREATE TABLE IF NOT EXISTS conflicts (
+    conflict_id TEXT PRIMARY KEY,
+    
+    -- Classification
+    type TEXT NOT NULL CHECK (type IN (
+        'contradictory', 'duplicate', 'supersession', 'scope_overlap', 'stale'
+    )),
+    detection_method TEXT NOT NULL CHECK (detection_method IN (
+        'tag_overlap', 'semantic_similarity', 'supersession_chain', 
+        'rule_extraction', 'manual', 'co_retrieval'
+    )),
+    confidence REAL NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),
+    
+    -- Description
+    description TEXT NOT NULL,
+    evidence TEXT,
+    
+    -- Status
+    status TEXT NOT NULL DEFAULT 'unresolved' CHECK (status IN (
+        'unresolved', 'in_progress', 'resolved', 'dismissed'
+    )),
+    detected_at TEXT NOT NULL,
+    
+    -- Resolution
+    resolved_at TEXT,
+    resolution_action TEXT CHECK (resolution_action IN (
+        'deprecate', 'merge', 'clarify', 'dismiss', 'defer'
+    )),
+    resolution_target TEXT,
+    resolution_reason TEXT,
+    resolved_by TEXT,
+    
+    -- Metadata
+    scan_id TEXT,
+    suppressed_until TEXT,
+    
+    -- Deduplication
+    memory_pair_hash TEXT UNIQUE          -- Hash of sorted memory IDs
+);
+
+CREATE INDEX IF NOT EXISTS idx_conflicts_status ON conflicts(status);
+CREATE INDEX IF NOT EXISTS idx_conflicts_type ON conflicts(type);
+CREATE INDEX IF NOT EXISTS idx_conflicts_detected ON conflicts(detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conflicts_confidence ON conflicts(confidence DESC);
+
+-- Memories involved in conflicts
+CREATE TABLE IF NOT EXISTS conflict_memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conflict_id TEXT NOT NULL REFERENCES conflicts(conflict_id) ON DELETE CASCADE,
+    memory_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    scope TEXT,
+    priority REAL,
+    role TEXT NOT NULL CHECK (role IN ('primary', 'secondary')),
+    key_claims_json TEXT DEFAULT '[]',
+    
+    UNIQUE(conflict_id, memory_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conflict_memories_conflict ON conflict_memories(conflict_id);
+CREATE INDEX IF NOT EXISTS idx_conflict_memories_memory ON conflict_memories(memory_id);
+
+-- Scan history
+CREATE TABLE IF NOT EXISTS conflict_scans (
+    scan_id TEXT PRIMARY KEY,
+    scan_type TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    duration_ms INTEGER,
+    
+    -- Scope
+    memories_scanned INTEGER,
+    methods_used_json TEXT,
+    
+    -- Results
+    conflicts_detected INTEGER DEFAULT 0,
+    conflicts_new INTEGER DEFAULT 0,
+    conflicts_existing INTEGER DEFAULT 0,
+    
+    -- By type/method
+    by_type_json TEXT DEFAULT '{}',
+    by_method_json TEXT DEFAULT '{}',
+    
+    -- Status
+    status TEXT DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+    errors_json TEXT DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_scans_started ON conflict_scans(started_at DESC);
+
+-- Resolution audit log
+CREATE TABLE IF NOT EXISTS resolution_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conflict_id TEXT NOT NULL REFERENCES conflicts(conflict_id),
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    details_json TEXT,
+    
+    -- What changed
+    memories_modified_json TEXT DEFAULT '[]',
+    memories_deprecated_json TEXT DEFAULT '[]',
+    memories_created_json TEXT DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_resolution_log_conflict ON resolution_log(conflict_id);
+
+5. Component Specifications
+5.1 Conflict Detector (Orchestrator)
+Module: dmm/conflicts/detector.py
+Responsibilities:
+    • Orchestrate multiple detection methods 
+    • Merge and deduplicate candidates 
+    • Assign conflict IDs and persist 
+    • Integrate with commit hooks 
+Interface:
+class ConflictDetector:
+    def __init__(
+        self,
+        store: MemoryStore,
+        conflict_store: ConflictStore,
+        embedder: MemoryEmbedder,
+        config: ConflictConfig
+    ):
+        self.tag_analyzer = TagOverlapAnalyzer(store)
+        self.semantic_analyzer = SemanticClusteringAnalyzer(store, embedder)
+        self.supersession_analyzer = SupersessionChainAnalyzer(store)
+        self.rule_extractor = RuleExtractionAnalyzer(config.llm_config)
+        self.merger = ConflictMerger(conflict_store)
+    
+    async def scan(self, request: ScanRequest) -> ScanResult:
+        """
+        Execute a conflict scan.
+        
+        1. Run enabled detection methods
+        2. Collect candidates
+        3. Merge and deduplicate
+        4. Optionally run rule extraction on candidates
+        5. Persist new conflicts
+        6. Return results
+        """
+        pass
+    
+    async def scan_new_memory(self, memory_id: str) -> ScanResult:
+        """
+        Incremental scan for a newly committed memory.
+        
+        Called by CommitEngine after successful commit.
+        """
+        pass
+    
+    async def check_proposal(
+        self, 
+        proposal: WriteProposal
+    ) -> list[ConflictCandidate]:
+        """
+        Check if a proposal would conflict with existing memories.
+        
+        Called by ReviewerAgent during review.
+        Does NOT persist; returns candidates for review decision.
+        """
+        pass
+
+@dataclass
+class ConflictConfig:
+    # Detection thresholds
+    tag_overlap_min_shared: int = 2      # Min shared tags for candidate
+    semantic_similarity_threshold: float = 0.80
+    
+    # LLM settings
+    use_rule_extraction: bool = True
+    llm_config: LLMConfig = None
+    
+    # Scan settings
+    periodic_scan_interval_hours: int = 24
+    max_candidates_per_method: int = 100
+    
+    # Filtering
+    ignore_deprecated: bool = True
+    ignore_ephemeral_vs_ephemeral: bool = True
+5.2 Tag Overlap Analyzer
+Module: dmm/conflicts/analyzers/tag_overlap.py
+Responsibilities:
+    • Group memories by shared tags 
+    • Identify potential contradictions within groups 
+    • Use keyword heuristics for conflict signals 
+Interface:
+class TagOverlapAnalyzer:
+    def __init__(self, store: MemoryStore):
+        pass
+    
+    async def analyze(
+        self,
+        memory_ids: Optional[list[str]] = None
+    ) -> list[ConflictCandidate]:
+        """
+        Find conflicts via tag overlap.
+        
+        Algorithm:
+        1. Group memories by tags
+        2. For each group with 2+ memories:
+           a. Check for contradiction signals in titles/content
+           b. Score based on signal strength
+        3. Return candidates above threshold
+        """
+        pass
+    
+    async def analyze_single(
+        self,
+        memory_id: str
+    ) -> list[ConflictCandidate]:
+        """Analyze a single memory against all others."""
+        pass
+
+# Contradiction signals (heuristic)
+CONTRADICTION_PATTERNS = [
+    # Pattern pairs that suggest contradiction
+    (r"\balways\b", r"\bnever\b"),
+    (r"\bmust\b", r"\bmust not\b"),
+    (r"\brequired\b", r"\bforbidden\b"),
+    (r"\buse\b", r"\bavoid\b"),
+    (r"\benable\b", r"\bdisable\b"),
+    (r"\ballow\b", r"\bprohibit\b"),
+    
+    # Specific domain patterns
+    (r"\btabs\b", r"\bspaces\b"),
+    (r"\bsync\b", r"\basync\b"),
+    (r"\bSQL\b", r"\bORM\b"),
+]
+Detection Algorithm:
+async def analyze(self, memory_ids: Optional[list[str]] = None) -> list[ConflictCandidate]:
+    candidates = []
+    
+    # 1. Get all active memories
+    memories = await self.store.get_memories(
+        status="active",
+        ids=memory_ids
+    )
+    
+    # 2. Build tag index
+    tag_to_memories: dict[str, list[Memory]] = defaultdict(list)
+    for memory in memories:
+        for tag in memory.tags:
+            tag_to_memories[tag].append(memory)
+    
+    # 3. Find memories sharing multiple tags
+    memory_pairs_checked = set()
+    for tag, tag_memories in tag_to_memories.items():
+        if len(tag_memories) < 2:
+            continue
+        
+        for i, m1 in enumerate(tag_memories):
+            for m2 in tag_memories[i+1:]:
+                pair_key = tuple(sorted([m1.id, m2.id]))
+                if pair_key in memory_pairs_checked:
+                    continue
+                memory_pairs_checked.add(pair_key)
+                
+                # Count shared tags
+                shared_tags = set(m1.tags) & set(m2.tags)
+                if len(shared_tags) < self.config.min_shared_tags:
+                    continue
+                
+                # Check for contradiction signals
+                score, evidence = self._check_contradiction(m1, m2)
+                if score > 0:
+                    candidates.append(ConflictCandidate(
+                        memory_ids=(m1.id, m2.id),
+                        detection_method=DetectionMethod.TAG_OVERLAP,
+                        raw_score=score,
+                        evidence={
+                            "shared_tags": list(shared_tags),
+                            "contradiction_signals": evidence
+                        }
+                    ))
+    
+    return candidates
+
+def _check_contradiction(self, m1: Memory, m2: Memory) -> tuple[float, list[str]]:
+    """Check for contradiction signals between two memories."""
+    evidence = []
+    score = 0.0
+    
+    text1 = f"{m1.title} {m1.body}".lower()
+    text2 = f"{m2.title} {m2.body}".lower()
+    
+    for pattern1, pattern2 in CONTRADICTION_PATTERNS:
+        has1_p1 = bool(re.search(pattern1, text1))
+        has1_p2 = bool(re.search(pattern2, text1))
+        has2_p1 = bool(re.search(pattern1, text2))
+        has2_p2 = bool(re.search(pattern2, text2))
+        
+        # Contradiction: one has pattern1, other has pattern2
+        if (has1_p1 and has2_p2) or (has1_p2 and has2_p1):
+            evidence.append(f"{pattern1} vs {pattern2}")
+            score += 0.3
+    
+    # Cap at 1.0
+    return min(score, 1.0), evidence
+5.3 Semantic Clustering Analyzer
+Module: dmm/conflicts/analyzers/semantic.py
+Responsibilities:
+    • Cluster memories by embedding similarity 
+    • Identify high-similarity pairs 
+    • Filter to those with different conclusions 
+Interface:
+class SemanticClusteringAnalyzer:
+    def __init__(self, store: MemoryStore, embedder: MemoryEmbedder):
+        pass
+    
+    async def analyze(
+        self,
+        memory_ids: Optional[list[str]] = None
+    ) -> list[ConflictCandidate]:
+        """
+        Find conflicts via semantic similarity.
+        
+        Algorithm:
+        1. Get all memory embeddings
+        2. Compute pairwise similarities (or use approximate NN)
+        3. For pairs above threshold:
+           a. Check if they have different conclusions
+           b. Score based on similarity + divergence
+        4. Return candidates
+        """
+        pass
+    
+    async def find_similar(
+        self,
+        memory_id: str,
+        threshold: float = 0.80
+    ) -> list[tuple[str, float]]:
+        """Find memories similar to a given one."""
+        pass
+
+@dataclass 
+class SemanticConfig:
+    similarity_threshold: float = 0.80
+    max_pairs_to_check: int = 1000
+    use_approximate_nn: bool = True      # For large stores
+    divergence_keywords: list[str] = field(
+        default_factory=lambda: [
+            "not", "never", "avoid", "don't", "shouldn't",
+            "instead", "rather", "but", "however", "although"
+        ]
+    )
+Detection Algorithm:
+async def analyze(self, memory_ids: Optional[list[str]] = None) -> list[ConflictCandidate]:
+    candidates = []
+    
+    # 1. Get memories and embeddings
+    memories = await self.store.get_memories_with_embeddings(ids=memory_ids)
+    
+    # 2. Find high-similarity pairs
+    similar_pairs = await self._find_similar_pairs(memories)
+    
+    # 3. Filter to those with different conclusions
+    for m1_id, m2_id, similarity in similar_pairs:
+        m1 = next(m for m in memories if m.id == m1_id)
+        m2 = next(m for m in memories if m.id == m2_id)
+        
+        # Skip if same scope and very high similarity (likely not conflict)
+        if similarity > 0.95 and m1.scope == m2.scope:
+            # This is duplication, handled by Phase 2
+            continue
+        
+        # Check for divergence signals
+        divergence = self._compute_divergence(m1, m2)
+        if divergence > 0.3:  # Threshold for "different enough"
+            score = similarity * divergence  # High similarity + high divergence = conflict
+            candidates.append(ConflictCandidate(
+                memory_ids=(m1_id, m2_id),
+                detection_method=DetectionMethod.SEMANTIC_SIMILARITY,
+                raw_score=score,
+                evidence={
+                    "similarity": similarity,
+                    "divergence": divergence,
+                    "divergence_signals": self._get_divergence_signals(m1, m2)
+                }
+            ))
+    
+    return candidates
+
+def _compute_divergence(self, m1: Memory, m2: Memory) -> float:
+    """
+    Compute how much two memories diverge despite similarity.
+    
+    High divergence + high similarity = likely conflict
+    """
+    text1 = f"{m1.title} {m1.body}".lower()
+    text2 = f"{m2.title} {m2.body}".lower()
+    
+    # Count divergence keywords
+    div1 = sum(1 for kw in self.config.divergence_keywords if kw in text1)
+    div2 = sum(1 for kw in self.config.divergence_keywords if kw in text2)
+    
+    # Asymmetric divergence suggests one is negating the other
+    asymmetry = abs(div1 - div2) / (max(div1, div2) + 1)
+    
+    # Different scopes for same content = potential scope conflict
+    scope_diff = 0.2 if m1.scope != m2.scope else 0.0
+    
+    return min(asymmetry + scope_diff, 1.0)
+5.4 Supersession Chain Analyzer
+Module: dmm/conflicts/analyzers/supersession.py
+Responsibilities:
+    • Follow supersedes relationships 
+    • Detect orphaned supersessions (superseded memory still active) 
+    • Detect circular supersessions 
+    • Detect multiple memories superseding the same target 
+Interface:
+class SupersessionChainAnalyzer:
+    def __init__(self, store: MemoryStore):
+        pass
+    
+    async def analyze(
+        self,
+        memory_ids: Optional[list[str]] = None
+    ) -> list[ConflictCandidate]:
+        """
+        Find conflicts in supersession chains.
+        
+        Conflict types:
+        1. Orphaned: Memory claims to supersede X, but X is still active
+        2. Circular: A supersedes B supersedes A
+        3. Contested: Both A and B claim to supersede C
+        4. Incomplete: A supersedes B, but A is deprecated
+        """
+        pass
+
+@dataclass
+class SupersessionIssue:
+    issue_type: str  # "orphaned" | "circular" | "contested" | "incomplete"
+    memory_ids: list[str]
+    description: str
+Detection Algorithm:
+async def analyze(self, memory_ids: Optional[list[str]] = None) -> list[ConflictCandidate]:
+    candidates = []
+    
+    # 1. Build supersession graph
+    memories = await self.store.get_memories(ids=memory_ids)
+    supersedes_map: dict[str, list[str]] = {}  # memory_id -> [superseded_ids]
+    superseded_by: dict[str, list[str]] = {}   # memory_id -> [superseding_ids]
+    
+    for memory in memories:
+        if memory.supersedes:
+            supersedes_map[memory.id] = memory.supersedes
+            for target in memory.supersedes:
+                superseded_by.setdefault(target, []).append(memory.id)
+    
+    # 2. Check for orphaned supersessions
+    for memory_id, targets in supersedes_map.items():
+        memory = next(m for m in memories if m.id == memory_id)
+        if memory.status == "deprecated":
+            continue
+            
+        for target_id in targets:
+            target = next((m for m in memories if m.id == target_id), None)
+            if target and target.status == "active":
+                candidates.append(ConflictCandidate(
+                    memory_ids=(memory_id, target_id),
+                    detection_method=DetectionMethod.SUPERSESSION_CHAIN,
+                    raw_score=0.9,
+                    evidence={
+                        "issue_type": "orphaned",
+                        "description": f"{memory_id} claims to supersede {target_id}, but {target_id} is still active"
+                    }
+                ))
+    
+    # 3. Check for contested supersessions
+    for target_id, superseding_ids in superseded_by.items():
+        if len(superseding_ids) > 1:
+            # Multiple memories claim to supersede the same target
+            active_superseding = [
+                mid for mid in superseding_ids 
+                if next(m for m in memories if m.id == mid).status == "active"
+            ]
+            if len(active_superseding) > 1:
+                candidates.append(ConflictCandidate(
+                    memory_ids=tuple(active_superseding[:2]),
+                    detection_method=DetectionMethod.SUPERSESSION_CHAIN,
+                    raw_score=0.85,
+                    evidence={
+                        "issue_type": "contested",
+                        "description": f"Multiple memories ({', '.join(active_superseding)}) claim to supersede {target_id}"
+                    }
+                ))
+    
+    # 4. Check for circular supersessions
+    visited = set()
+    for start_id in supersedes_map:
+        cycle = self._find_cycle(start_id, supersedes_map, visited)
+        if cycle:
+            candidates.append(ConflictCandidate(
+                memory_ids=tuple(cycle[:2]),
+                detection_method=DetectionMethod.SUPERSESSION_CHAIN,
+                raw_score=1.0,
+                evidence={
+                    "issue_type": "circular",
+                    "description": f"Circular supersession detected: {' -> '.join(cycle)}"
+                }
+            ))
+    
+    return candidates
+5.5 Rule Extraction Analyzer (LLM-Based)
+Module: dmm/conflicts/analyzers/rule_extraction.py
+Responsibilities:
+    • Extract explicit rules from memory content 
+    • Compare rules for logical contradiction 
+    • Provide high-confidence conflict detection 
+Interface:
+class RuleExtractionAnalyzer:
+    def __init__(self, llm_config: LLMConfig):
+        pass
+    
+    async def analyze_pair(
+        self,
+        m1: Memory,
+        m2: Memory
+    ) -> Optional[ConflictCandidate]:
+        """
+        Use LLM to extract and compare rules from two memories.
+        
+        1. Extract rules from each memory
+        2. Compare rules for contradiction
+        3. Return conflict candidate if contradiction found
+        """
+        pass
+    
+    async def analyze_candidates(
+        self,
+        candidates: list[ConflictCandidate],
+        memories: dict[str, Memory]
+    ) -> list[ConflictCandidate]:
+        """
+        Refine candidates using LLM analysis.
+        
+        Used as a second pass on candidates from other methods.
+        """
+        pass
+LLM Prompt:
+RULE_EXTRACTION_PROMPT = """
+Analyze these two memory entries and determine if they conflict.
+
+## Memory 1
+Path: {path1}
+Title: {title1}
+Content:
+{content1}
+
+## Memory 2
+Path: {path2}
+Title: {title2}
+Content:
+{content2}
+
+## Analysis Tasks
+
+1. Extract the key rules or claims from each memory
+2. Compare the rules for logical contradiction
+3. Determine if they conflict
+
+## Response Format
+
+```json
+{
+  "memory1_rules": ["rule1", "rule2", ...],
+  "memory2_rules": ["rule1", "rule2", ...],
+  "conflicts": [
+    {
+      "rule1": "...",
+      "rule2": "...",
+      "contradiction": "description of how they contradict",
+      "severity": "high|medium|low"
+    }
+  ],
+  "overall_conflict": true|false,
+  "confidence": 0.0-1.0,
+  "explanation": "..."
+}
+Be conservative: only report conflicts if the rules genuinely contradict. Different recommendations for different contexts are not conflicts. """
+
+### 5.6 Conflict Merger
+
+**Module:** `dmm/conflicts/merger.py`
+
+**Responsibilities:**
+- Deduplicate conflicts from multiple methods
+- Combine evidence from multiple sources
+- Assign confidence scores
+- Assign conflict IDs
+- Persist to database
+
+**Interface:**
+
+```python
+class ConflictMerger:
+    def __init__(self, conflict_store: ConflictStore):
+        pass
+    
+    async def merge_and_persist(
+        self,
+        candidates: list[ConflictCandidate],
+        memories: dict[str, Memory],
+        scan_id: str
+    ) -> MergeResult:
+        """
+        Merge candidates and persist new conflicts.
+        
+        1. Group by memory pair
+        2. Combine evidence from multiple methods
+        3. Compute final confidence
+        4. Check for existing conflicts (dedup)
+        5. Persist new conflicts
+        6. Return results
+        """
+        pass
+
+@dataclass
+class MergeResult:
+    total_candidates: int
+    unique_pairs: int
+    new_conflicts: int
+    existing_conflicts: int
+    conflicts: list[Conflict]
+Merging Algorithm:
+async def merge_and_persist(
+    self,
+    candidates: list[ConflictCandidate],
+    memories: dict[str, Memory],
+    scan_id: str
+) -> MergeResult:
+    # 1. Group by memory pair
+    pair_to_candidates: dict[tuple, list[ConflictCandidate]] = defaultdict(list)
+    for candidate in candidates:
+        pair_key = tuple(sorted(candidate.memory_ids))
+        pair_to_candidates[pair_key].append(candidate)
+    
+    new_conflicts = []
+    existing_count = 0
+    
+    for pair_key, pair_candidates in pair_to_candidates.items():
+        # 2. Check if conflict already exists
+        existing = await self.conflict_store.get_by_memory_pair(pair_key)
+        if existing and existing.status != ConflictStatus.DISMISSED:
+            existing_count += 1
+            continue
+        
+        # 3. Combine evidence
+        combined_evidence = self._combine_evidence(pair_candidates)
+        
+        # 4. Compute confidence (higher if multiple methods agree)
+        confidence = self._compute_confidence(pair_candidates)
+        
+        # 5. Determine conflict type
+        conflict_type = self._determine_type(pair_candidates)
+        
+        # 6. Build conflict object
+        m1 = memories[pair_key[0]]
+        m2 = memories[pair_key[1]]
+        
+        conflict = Conflict(
+            conflict_id=self._generate_id(),
+            memories=[
+                ConflictMemory(
+                    memory_id=m1.id,
+                    path=m1.path,
+                    title=m1.title,
+                    summary=m1.body[:200],
+                    scope=m1.scope.value,
+                    priority=m1.priority,
+                    role="primary"
+                ),
+                ConflictMemory(
+                    memory_id=m2.id,
+                    path=m2.path,
+                    title=m2.title,
+                    summary=m2.body[:200],
+                    scope=m2.scope.value,
+                    priority=m2.priority,
+                    role="secondary"
+                )
+            ],
+            type=conflict_type,
+            detection_method=pair_candidates[0].detection_method,
+            confidence=confidence,
+            description=self._generate_description(m1, m2, pair_candidates),
+            evidence=json.dumps(combined_evidence),
+            scan_id=scan_id
+        )
+        
+        # 7. Persist
+        await self.conflict_store.create(conflict)
+        new_conflicts.append(conflict)
+    
+    return MergeResult(
+        total_candidates=len(candidates),
+        unique_pairs=len(pair_to_candidates),
+        new_conflicts=len(new_conflicts),
+        existing_conflicts=existing_count,
+        conflicts=new_conflicts
+    )
+
+def _compute_confidence(self, candidates: list[ConflictCandidate]) -> float:
+    """
+    Confidence increases when multiple methods detect the conflict.
+    """
+    methods = set(c.detection_method for c in candidates)
+    base_score = max(c.raw_score for c in candidates)
+    
+    # Boost for multiple methods
+    method_boost = min(len(methods) * 0.1, 0.3)
+    
+    return min(base_score + method_boost, 1.0)
+5.7 Conflict Store
+Module: dmm/conflicts/store.py
+Responsibilities:
+    • CRUD operations for conflicts 
+    • Query by status, type, memory 
+    • Update resolution status 
+Interface:
+class ConflictStore:
+    def __init__(self, db_path: Path):
+        pass
+    
+    async def create(self, conflict: Conflict) -> str:
+        """Create a new conflict record."""
+        pass
+    
+    async def get(self, conflict_id: str) -> Optional[Conflict]:
+        """Get a conflict by ID."""
+        pass
+    
+    async def get_by_memory_pair(
+        self,
+        pair: tuple[str, str]
+    ) -> Optional[Conflict]:
+        """Get conflict for a specific memory pair."""
+        pass
+    
+    async def get_by_memory(self, memory_id: str) -> list[Conflict]:
+        """Get all conflicts involving a memory."""
+        pass
+    
+    async def get_unresolved(
+        self,
+        limit: int = 50,
+        min_confidence: float = 0.0
+    ) -> list[Conflict]:
+        """Get unresolved conflicts, sorted by confidence."""
+        pass
+    
+    async def get_by_status(
+        self,
+        status: ConflictStatus,
+        limit: int = 50
+    ) -> list[Conflict]:
+        """Get conflicts by status."""
+        pass
+    
+    async def update_status(
+        self,
+        conflict_id: str,
+        status: ConflictStatus,
+        resolution: Optional[ResolutionRequest] = None
+    ) -> bool:
+        """Update conflict status and optionally record resolution."""
+        pass
+    
+    async def get_stats(self) -> ConflictStats:
+        """Get conflict statistics."""
+        pass
+
+@dataclass
+class ConflictStats:
+    total: int
+    unresolved: int
+    in_progress: int
+    resolved: int
+    dismissed: int
+    by_type: dict[str, int]
+    by_method: dict[str, int]
+    avg_confidence: float
+    oldest_unresolved: Optional[datetime]
+5.8 Conflict Resolver
+Module: dmm/conflicts/resolver.py
+Responsibilities:
+    • Execute resolution strategies 
+    • Update memories based on resolution 
+    • Record resolution in audit log 
+Interface:
+class ConflictResolver:
+    def __init__(
+        self,
+        conflict_store: ConflictStore,
+        memory_store: MemoryStore,
+        commit_engine: CommitEngine
+    ):
+        pass
+    
+    async def resolve(self, request: ResolutionRequest) -> ResolutionResult:
+        """
+        Execute a resolution strategy.
+        
+        Strategies:
+        - DEPRECATE: Mark target memory as deprecated
+        - MERGE: Create new memory combining both, deprecate originals
+        - CLARIFY: Update both memories with scope/condition clarifications
+        - DISMISS: Mark conflict as false positive
+        """
+        pass
+    
+    async def deprecate_resolution(
+        self,
+        conflict: Conflict,
+        target_memory_id: str,
+        reason: str
+    ) -> ResolutionResult:
+        """Deprecate one memory to resolve conflict."""
+        pass
+    
+    async def merge_resolution(
+        self,
+        conflict: Conflict,
+        merged_content: str,
+        reason: str
+    ) -> ResolutionResult:
+        """Merge memories into one to resolve conflict."""
+        pass
+    
+    async def clarify_resolution(
+        self,
+        conflict: Conflict,
+        clarifications: dict[str, str],  # memory_id -> clarification to add
+        reason: str
+    ) -> ResolutionResult:
+        """Add clarifications to both memories."""
+        pass
+    
+    async def dismiss_resolution(
+        self,
+        conflict: Conflict,
+        reason: str
+    ) -> ResolutionResult:
+        """Mark as false positive."""
+        pass
+Resolution Workflows:
+async def deprecate_resolution(
+    self,
+    conflict: Conflict,
+    target_memory_id: str,
+    reason: str
+) -> ResolutionResult:
+    """Deprecate one memory to resolve conflict."""
+    
+    # 1. Find the target memory
+    target = next(m for m in conflict.memories if m.memory_id == target_memory_id)
+    other = next(m for m in conflict.memories if m.memory_id != target_memory_id)
+    
+    # 2. Create deprecation proposal
+    proposal = WriteProposal(
+        proposal_id=generate_id("prop"),
+        type=ProposalType.DEPRECATE,
+        target_path=target.path,
+        reason=f"Conflict resolution: {reason}. Superseded by {other.path}",
+        proposed_by="system"
+    )
+    
+    # 3. Bypass normal review (system resolution)
+    result = await self.commit_engine.commit_deprecation(proposal)
+    
+    if not result.success:
+        return ResolutionResult(
+            success=False,
+            conflict_id=conflict.conflict_id,
+            action_taken=ResolutionAction.DEPRECATE,
+            error=result.error
+        )
+    
+    # 4. Update the surviving memory's supersedes field
+    await self._add_supersedes(other.memory_id, target_memory_id)
+    
+    # 5. Update conflict status
+    await self.conflict_store.update_status(
+        conflict.conflict_id,
+        ConflictStatus.RESOLVED,
+        resolution=ResolutionRequest(
+            conflict_id=conflict.conflict_id,
+            action=ResolutionAction.DEPRECATE,
+            target_memory_id=target_memory_id,
+            reason=reason,
+            resolved_by="system"
+        )
+    )
+    
+    return ResolutionResult(
+        success=True,
+        conflict_id=conflict.conflict_id,
+        action_taken=ResolutionAction.DEPRECATE,
+        memories_deprecated=[target_memory_id],
+        memories_modified=[other.memory_id]
+    )
+5.9 Scanner (Triggers and Scheduling)
+Module: dmm/conflicts/scanner.py
+Responsibilities:
+    • Schedule periodic scans 
+    • Trigger scans on events 
+    • Track scan history 
+Interface:
+class ConflictScanner:
+    def __init__(
+        self,
+        detector: ConflictDetector,
+        config: ScanConfig
+    ):
+        pass
+    
+    async def start_periodic_scan(self) -> None:
+        """Start the periodic scan scheduler."""
+        pass
+    
+    async def stop_periodic_scan(self) -> None:
+        """Stop the periodic scan scheduler."""
+        pass
+    
+    async def trigger_full_scan(self) -> ScanResult:
+        """Manually trigger a full scan."""
+        pass
+    
+    async def trigger_incremental_scan(
+        self,
+        memory_id: str
+    ) -> ScanResult:
+        """Trigger scan for a specific memory."""
+        pass
+    
+    async def get_scan_history(
+        self,
+        limit: int = 20
+    ) -> list[ScanResult]:
+        """Get recent scan history."""
+        pass
+
+@dataclass
+class ScanConfig:
+    periodic_enabled: bool = True
+    periodic_interval_hours: int = 24
+    scan_at_startup: bool = True
+    incremental_on_commit: bool = True
+
+6. Integration Points
+6.1 CommitEngine Integration
+# In writeback/commit.py - extend commit method
+
+async def commit(self, proposal: WriteProposal) -> CommitResult:
+    result = await self._do_commit(proposal)
+    
+    if result.success and self.config.incremental_conflict_scan:
+        # Phase 3: trigger incremental conflict scan
+        scan_result = await self.conflict_scanner.trigger_incremental_scan(
+            memory_id=self._get_memory_id(proposal.target_path)
+        )
+        
+        if scan_result.conflicts_new > 0:
+            # Log that conflicts were detected
+            logger.warning(
+                f"Commit created {scan_result.conflicts_new} new conflicts"
+            )
+    
+    return result
+6.2 ReviewerAgent Integration
+# In reviewer/agent.py - extend review method
+
+async def review(self, proposal: WriteProposal) -> ReviewResult:
+    issues = []
+    
+    # ... existing validation ...
+    
+    # Phase 3: check for potential conflicts
+    if proposal.type == ProposalType.CREATE:
+        potential_conflicts = await self.conflict_detector.check_proposal(proposal)
+        
+        if potential_conflicts:
+            for candidate in potential_conflicts:
+                issues.append(ValidationIssue(
+                    category="conflict",
+                    severity="warning",
+                    message=f"May conflict with {candidate.memory_ids[1]}",
+                    suggestion="Review similar memory before committing"
+                ))
+    
+    # ... synthesize decision ...
+    
+    return ReviewResult(
+        # ...
+        potential_conflicts=potential_conflicts,
+        # ...
+    )
+6.3 Retrieval Integration
+# In retrieval/router.py - extend retrieve method
+
+async def retrieve(self, query: str, budget: int, filters: SearchFilters) -> RetrievalResult:
+    result = await self._do_retrieval(query, budget, filters)
+    
+    # Phase 3: check for conflicts among retrieved memories
+    if self.config.warn_on_conflicting_retrieval:
+        memory_ids = [e.memory_id for e in result.entries]
+        conflicts = await self.conflict_store.get_conflicts_among(memory_ids)
+        
+        if conflicts:
+            result.warnings.append(
+                f"Warning: {len(conflicts)} conflicts exist among retrieved memories"
+            )
+            result.conflicts = conflicts
+    
+    return result
+
+7. API Endpoints
+7.1 Conflict Endpoints
+GET /conflicts
+    Query params: 
+        status?: unresolved|in_progress|resolved|dismissed
+        type?: contradictory|duplicate|supersession|scope_overlap|stale
+        min_confidence?: float
+        memory_id?: string (filter by involved memory)
+        limit?: int
+    Response: {
+        "conflicts": Conflict[],
+        "total": int,
+        "stats": ConflictStats
+    }
+
+GET /conflicts/{conflict_id}
+    Response: Conflict
+
+GET /conflicts/memory/{memory_id}
+    Response: {
+        "conflicts": Conflict[],
+        "total": int
+    }
+
+POST /conflicts/scan
+    Request: ScanRequest
+    Response: ScanResult
+
+POST /conflicts/{conflict_id}/resolve
+    Request: ResolutionRequest
+    Response: ResolutionResult
+
+POST /conflicts/{conflict_id}/dismiss
+    Request: {
+        "reason": string
+    }
+    Response: ResolutionResult
+
+POST /conflicts/flag
+    Request: {
+        "memory_ids": [string, string],
+        "description": string,
+        "type"?: string
+    }
+    Response: {
+        "conflict_id": string,
+        "created": boolean
+    }
+
+GET /conflicts/stats
+    Response: ConflictStats
+
+GET /conflicts/scans
+    Query params: limit?: int
+    Response: {
+        "scans": ScanResult[],
+        "total": int
+    }
+7.2 Check Endpoint (For Agents)
+POST /conflicts/check
+    Request: {
+        "memory_ids": string[]
+    }
+    Response: {
+        "has_conflicts": boolean,
+        "conflicts": Conflict[]
+    }
+
+POST /conflicts/check-content
+    Request: {
+        "content": string,
+        "path": string
+    }
+    Response: {
+        "potential_conflicts": ConflictCandidate[],
+        "similar_memories": [{path, similarity}]
+    }
+
+8. CLI Commands
+8.1 Conflict Commands
+dmm conflicts
+├── scan                       # Run conflict scan
+│   --full                     # Full scan (default: incremental)
+│   --methods <list>           # tag,semantic,supersession,rule
+│   --include-rule-extraction  # Use LLM (slower)
+│   --json
+│
+├── list                       # List conflicts
+│   --status <status>          # Filter by status
+│   --type <type>              # Filter by type
+│   --memory <id>              # Filter by involved memory
+│   --min-confidence <float>   # Filter by confidence
+│   --limit <n>
+│   --json
+│
+├── show <conflict_id>         # Show conflict details
+│   --json
+│
+├── resolve <conflict_id>      # Resolve a conflict
+│   --action <action>          # deprecate|merge|clarify|dismiss
+│   --target <memory_id>       # For deprecate
+│   --content <text>           # For merge (or --file)
+│   --reason <text>
+│
+├── flag                       # Manually flag a conflict
+│   --memories <id1,id2>
+│   --description <text>
+│   --type <type>
+│
+├── dismiss <conflict_id>      # Dismiss as false positive
+│   --reason <text>
+│
+├── check                      # Check memories for conflicts
+│   --memories <id1,id2,...>
+│   --json
+│
+└── stats                      # Show conflict statistics
+    --json
+8.2 Example CLI Sessions
+# Run a full conflict scan
+$ dmm conflicts scan --full
+Scanning for conflicts...
+
+Methods: tag_overlap, semantic_similarity, supersession_chain
+Memories scanned: 142
+
+Results:
+  ✓ Scan completed in 3.2s
+  
+  Conflicts detected: 7
+  ├── New: 5
+  └── Existing: 2
+  
+  By type:
+  ├── contradictory: 3
+  ├── supersession: 2
+  └── scope_overlap: 2
+  
+  By method:
+  ├── tag_overlap: 4
+  └── semantic_similarity: 3
+
+Use 'dmm conflicts list' to view conflicts.
+
+# List unresolved conflicts
+$ dmm conflicts list --status unresolved
+┌────────────────────────────┬───────────────┬────────────┬──────────────────────────────────────┐
+│ ID                         │ Type          │ Confidence │ Memories                             │
+├────────────────────────────┼───────────────┼────────────┼──────────────────────────────────────┤
+│ conflict_20260111_143052   │ contradictory │ 0.92       │ project/code/tabs.md                 │
+│                            │               │            │ project/code/spaces.md               │
+├────────────────────────────┼───────────────┼────────────┼──────────────────────────────────────┤
+│ conflict_20260111_143108   │ supersession  │ 0.89       │ project/api/v2_endpoints.md          │
+│                            │               │            │ project/api/v1_endpoints.md          │
+├────────────────────────────┼───────────────┼────────────┼──────────────────────────────────────┤
+│ conflict_20260111_143215   │ scope_overlap │ 0.75       │ global/security/auth.md              │
+│                            │               │            │ project/security/auth_override.md    │
+└────────────────────────────┴───────────────┴────────────┴──────────────────────────────────────┘
+
+Unresolved: 3 | In Progress: 0 | Resolved: 4 | Dismissed: 0
+
+# Show conflict details
+$ dmm conflicts show conflict_20260111_143052
+
+Conflict: conflict_20260111_143052
+──────────────────────────────────────────────────────
+
+Type:        contradictory
+Confidence:  0.92
+Status:      unresolved
+Detected:    2026-01-11 14:30:52
+
+Memories:
+  1. project/code/tabs.md (primary)
+     Title: "Code Style: Use Tabs for Indentation"
+     Scope: project | Priority: 0.8
+     
+  2. project/code/spaces.md (secondary)
+     Title: "Code Style: Use 4 Spaces for Indentation"
+     Scope: project | Priority: 0.7
+
+Evidence:
+  Method: tag_overlap
+  Shared tags: [code, style, indentation, formatting]
+  Contradiction signals: ["tabs" vs "spaces", "use" in both]
+
+Description:
+  Both memories address indentation style but recommend incompatible
+  approaches (tabs vs 4 spaces).
+
+Suggested Resolution:
+  Deprecate one memory and keep the other as the authoritative rule.
+
+# Resolve by deprecating one memory
+$ dmm conflicts resolve conflict_20260111_143052 \
+    --action deprecate \
+    --target project/code/tabs.md \
+    --reason "Team decided on spaces per style guide vote"
+
+Resolving conflict_20260111_143052...
+
+Actions taken:
+  ✓ Deprecated: project/code/tabs.md
+  ✓ Updated: project/code/spaces.md (added supersedes reference)
+  ✓ Conflict marked as resolved
+
+Resolution recorded.
+
+# Check if specific memories conflict
+$ dmm conflicts check --memories "mem_001,mem_002,mem_003"
+
+Checking 3 memories for conflicts...
+
+Found 1 conflict:
+  conflict_20260111_150322 (confidence: 0.78)
+  Type: scope_overlap
+  Memories: mem_001 ↔ mem_003
+
+# View statistics
+$ dmm conflicts stats
+
+Conflict Statistics
+──────────────────────────────────────────────────────
+
+Total conflicts:     12
+├── Unresolved:      3
+├── In Progress:     1
+├── Resolved:        7
+└── Dismissed:       1
+
+By Type:
+├── contradictory:   5 (42%)
+├── supersession:    3 (25%)
+├── scope_overlap:   2 (17%)
+├── duplicate:       1 (8%)
+└── stale:           1 (8%)
+
+By Detection Method:
+├── tag_overlap:         6 (50%)
+├── semantic_similarity: 4 (33%)
+└── supersession_chain:  2 (17%)
+
+Average confidence:  0.84
+Oldest unresolved:   2 days ago
+
+9. BOOT.md Updates for Phase 3
+9.1 Updated BOOT.md
+# DMM Boot Instructions (Phase 3 - Complete)
+
+You have access to a Dynamic Markdown Memory (DMM) system that provides 
+relevant context for your tasks, allows you to record new knowledge, and 
+helps manage contradictions in the memory store.
+
+## What You Always Have
+
+Every Memory Pack includes the **Baseline Pack**—critical context that applies 
+to all tasks. This is automatically included; you don't need to query for it.
+
+## How to Retrieve Memory
+
+dmm query "<describe your task or question>" --budget 1200
+
+**Note:** If the retrieved memories contain conflicts, you'll see a warning.
+Check conflicts before proceeding with conflicting guidance.
+
+## How to Write Memory
+
+All writes go through review. See Phase 2 documentation for details.
+
+## Conflict Awareness
+
+The memory system detects conflicts between memories. You should:
+
+### Check for Conflicts
+
+Before relying on retrieved memories for critical decisions:
+
+dmm conflicts check --memories "mem_id1,mem_id2"
+
+### When You Notice Conflicts
+
+If you observe contradictory guidance:
+
+1. Flag the conflict:
+dmm conflicts flag 
+--memories "mem_id1,mem_id2" 
+--description "These contradict on database connection pooling"
+
+2. Continue with the more recent or higher-confidence memory
+3. Note the conflict in your response to the user
+
+### Resolving Conflicts
+
+If you can determine which memory is correct:
+
+dmm conflicts resolve <conflict_id> 
+--action deprecate 
+--target <wrong_memory_id> 
+--reason "Outdated after migration to new architecture"
+
+Resolution actions:
+- **deprecate**: Mark one memory as deprecated
+- **merge**: Combine into single authoritative memory
+- **clarify**: Add scope/conditions to both
+- **dismiss**: Mark as false positive
+
+### Conflict Warnings in Retrieval
+
+If your Memory Pack includes conflicting memories, you'll see:
+
+Warning: 2 conflicts exist among retrieved memories
+    • conflict_xxx: mem_a ↔ mem_b (contradictory) 
+
+Investigate before proceeding with conflicting guidance.
+
+## Best Practices
+
+1. **Check high-stakes decisions**: Before outputting critical guidance, 
+   verify no conflicts affect the relevant memories.
+
+2. **Flag early**: If you notice contradictions, flag them immediately 
+   even if you can work around them.
+
+3. **Prefer recent over old**: When forced to choose between conflicting 
+   memories, prefer more recently modified ones.
+
+4. **Prefer higher scope**: global > project > ephemeral for conflict 
+   resolution priority.
+
+5. **Don't ignore conflicts**: Silently choosing one interpretation 
+   without flagging creates technical debt.
+
+## Current Capabilities (Phase 3 - Complete)
+
+✅ Memory retrieval with Baseline Pack
+✅ Write-back with Reviewer Agent
+✅ Usage tracking
+✅ Conflict detection (automatic)
+✅ Conflict resolution workflow
+
+10. Testing Strategy
+10.1 Unit Tests
+Component	Test Cases
+TagOverlapAnalyzer	Shared tags, contradiction patterns, no overlap, edge cases
+SemanticClusteringAnalyzer	High similarity, low similarity, divergence detection
+SupersessionChainAnalyzer	Orphaned, circular, contested, valid chains
+RuleExtractionAnalyzer	Clear contradiction, no contradiction, LLM error handling
+ConflictMerger	Deduplication, confidence scoring, type determination
+ConflictStore	CRUD, queries, status updates
+ConflictResolver	Each resolution strategy, rollback on failure
+10.2 Integration Tests
+Scenario	Description
+Full scan flow	Trigger → Detect → Merge → Persist
+Incremental scan	Commit → Trigger → Detect new conflicts only
+Resolution flow	Detect → Review → Resolve → Verify memories updated
+Multi-method detection	Same conflict detected by multiple methods
+False positive handling	Dismiss → Verify not re-detected
+Reviewer integration	Proposal → Check conflicts → Include in review
+10.3 Test Fixtures
+tests/fixtures/conflicts/
+├── contradictory/
+│   ├── tabs_vs_spaces/
+│   │   ├── tabs.md
+│   │   └── spaces.md
+│   ├── sync_vs_async/
+│   │   ├── sync.md
+│   │   └── async.md
+│   └── orm_vs_raw_sql/
+│       ├── use_orm.md
+│       └── avoid_orm.md
+├── supersession/
+│   ├── orphaned/
+│   ├── circular/
+│   └── contested/
+├── scope_overlap/
+│   ├── global_and_project/
+│   └── project_and_ephemeral/
+└── non_conflicts/
+    ├── different_contexts/
+    └── complementary_rules/
+10.4 Performance Benchmarks
+Metric	Target
+Full scan (100 memories)	< 5s (without LLM)
+Full scan (100 memories)	< 30s (with LLM)
+Incremental scan	< 500ms
+Conflict query	< 50ms
+Resolution execution	< 1s
+
+11. Deliverables Checklist
+11.1 Code Deliverables
+    • [ ] TagOverlapAnalyzer with contradiction pattern matching 
+    • [ ] SemanticClusteringAnalyzer with divergence detection 
+    • [ ] SupersessionChainAnalyzer with chain validation 
+    • [ ] RuleExtractionAnalyzer with LLM integration 
+    • [ ] ConflictMerger with deduplication and scoring 
+    • [ ] ConflictStore with full CRUD operations 
+    • [ ] ConflictResolver with all resolution strategies 
+    • [ ] ConflictScanner with periodic and triggered scans 
+    • [ ] ConflictDetector orchestrator 
+    • [ ] Extended daemon API with conflict endpoints 
+    • [ ] Extended CLI with conflict commands 
+    • [ ] CommitEngine integration for post-commit scans 
+    • [ ] ReviewerAgent integration for conflict warnings 
+11.2 Configuration Deliverables
+    • [ ] Conflict detection thresholds 
+    • [ ] Scan scheduling configuration 
+    • [ ] LLM configuration for rule extraction 
+11.3 Documentation Deliverables
+    • [ ] Updated BOOT.md with conflict instructions 
+    • [ ] Conflict detection methodology documentation 
+    • [ ] Resolution workflow documentation 
+    • [ ] CLI reference for conflict commands 
+11.4 Database Deliverables
+    • [ ] Conflicts table (extend from Phase 2 schema) 
+    • [ ] Conflict memories table 
+    • [ ] Scan history table 
+    • [ ] Resolution audit log table 
+11.5 Test Deliverables
+    • [ ] Unit test suite (>80% coverage) 
+    • [ ] Integration test suite 
+    • [ ] Conflict fixture library 
+    • [ ] Performance benchmarks 
+
+12. Phase 4+ Considerations
+12.1 Multi-Agent Memory (Future)
+Phase 3 prepares for multi-agent support:
+Preparation	Description
+Agent identification	Conflicts track detected_by and resolved_by
+Scope flexibility	Resolution can create agent-scoped clarifications
+Audit trail	Full history of who did what
+12.2 Automatic Resolution (Future)
+Phase 3 enables future automatic resolution:
+Foundation	Future Extension
+Confidence scores	Auto-resolve above threshold
+Resolution strategies	ML-selected strategy
+Audit trail	Rollback capability
+12.3 Cross-Repo Memory (Future)
+Phase 3's design supports future cross-repo:
+Foundation	Future Extension
+Memory IDs	Namespace with repo prefix
+Conflict detection	Cross-repo conflict scanning
+Resolution	Coordinated multi-repo resolution
+
+13. Risk Mitigation
+Risk	Probability	Impact	Mitigation
+False positive conflicts	High	Medium	Tunable thresholds; dismiss workflow; human review
+LLM rule extraction errors	Medium	Low	LLM is optional; primary detection is heuristic
+Scan performance at scale	Medium	Medium	Incremental scans; approximate NN; caching
+Resolution breaks memories	Low	High	Atomic operations; audit trail; rollback capability
+Conflict fatigue	Medium	Medium	Confidence filtering; prioritization; batch dismiss
+
+14. Success Metrics
+14.1 Detection Metrics
+Metric	Target
+True positive rate	>80% (real conflicts detected)
+False positive rate	<20% (non-conflicts flagged)
+Detection coverage	>90% (of actual conflicts)
+Multi-method agreement	>60% (conflicts found by 2+ methods)
+14.2 Resolution Metrics
+Metric	Target
+Resolution rate	>90% (conflicts eventually resolved)
+Time to resolution	<7 days median
+Resolution success rate	>95% (resolutions don't break)
+Re-detection rate	<5% (resolved conflicts re-detected)
+14.3 System Metrics
+Metric	Target
+Scan completion rate	100%
+Incremental scan latency	<500ms
+Conflict query latency	<50ms
+System availability	99.9%
+
+15. Summary
+15.1 What Phase 3 Delivers
+    1. Proactive Conflict Detection: Automatically finds contradictions through multiple methods 
+    2. Comprehensive Coverage: Tag overlap, semantic similarity, supersession chains, and optional LLM analysis 
+    3. Structured Resolution: Clear workflows for deprecation, merging, clarification, or dismissal 
+    4. Full Integration: Hooks into commits, reviews, and retrievals 
+    5. Complete Audit Trail: Every detection and resolution is logged 
+15.2 DMM System Complete
+With Phase 3, the core DMM system is complete:
+Phase	Capability	Status
+1	Core retrieval, Baseline Pack, daemon	✅
+2	Write-back, Reviewer Agent, usage tracking	✅
+3	Conflict detection and resolution	✅
+The system now provides:
+    • Efficient, context-aware memory retrieval 
+    • Quality-controlled memory writing 
+    • Proactive conflict management 
+    • Full auditability via Git 
+15.3 Next Steps (Phase 4+)
+Future enhancements:
+    • Multi-agent memory namespaces 
+    • Cross-repo memory sharing 
+    • Automatic conflict resolution 
+    • Machine learning enhancements 
+
+End of PRD Phase 3
+Previous: PRD Phase 1 — Core System
+Previous: PRD Phase 2 — Write-Back + Reviewer Agent
+Status: Core DMM System Complete
+

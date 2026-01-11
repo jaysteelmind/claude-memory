@@ -1,0 +1,1579 @@
+﻿PRD Phase 2: Write-Back Engine + Reviewer Agent
+Product Requirements Document
+Version: 1.0
+Status: Draft
+Target Duration: 2 weeks
+Dependencies: PRD Phase 1 (Core System) — must be complete
+
+1. Executive Summary
+1.1 Purpose
+This PRD defines the second phase of the Dynamic Markdown Memory (DMM) system: the Write-Back Engine and Reviewer Agent. This phase enables agents to propose changes to memory (create, update, deprecate, promote) while ensuring quality through a dedicated review process.
+1.2 Phase 1 Dependencies
+Phase 2 requires the following Phase 1 deliverables:
+Dependency	Usage in Phase 2
+MemoryStore	Duplicate detection, memory lookups
+MemoryParser	Validate proposed memory content
+MemoryEmbedder	Embed new memories for similarity checks
+index/embeddings.db	Query for duplicates and similar memories
+index/stats.db	Populate usage tracking tables
+Daemon HTTP API	Extend with write/review endpoints
+CLI framework	Extend with write/review commands
+1.3 Success Criteria
+Phase 2 is complete when:
+    1. An agent can propose new memories via dmm write propose 
+    2. All write proposals are queued for review (no direct writes) 
+    3. The Reviewer Agent validates proposals against quality criteria 
+    4. Approved writes are atomically committed to the filesystem and index 
+    5. Rejected writes return actionable feedback 
+    6. Usage tracking records which memories are retrieved 
+    7. Promotion/demotion changes memory scope appropriately 
+1.4 Out of Scope (Deferred to Phase 3)
+Feature	Deferred To
+Conflict Detector	Phase 3
+Conflict resolution workflow	Phase 3
+Automatic conflict flagging on write	Phase 3
+Multi-agent namespaces	Phase 4+
+1.5 Continuity to Phase 3
+Phase 2 establishes the following interfaces that Phase 3 will consume:
+Interface	Phase 2 Responsibility	Phase 3 Extension
+index/conflicts.db	Schema defined (empty)	Populated by Conflict Detector
+Write approval hooks	Writes committed to filesystem	Trigger conflict scan post-commit
+related field in memories	Stored and indexed	Used for conflict detection
+supersedes field	Stored, triggers deprecation	Used for conflict chain analysis
+Reviewer Agent	Validates individual writes	Extended to flag potential conflicts
+
+2. System Architecture
+2.1 Phase 2 Component Diagram
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DMM Phase 2 Components                               │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        Write-Back Engine                             │   │
+│  │                                                                      │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │   │
+│  │  │  Proposal   │  │   Review    │  │  Commit     │  │  Usage     │ │   │
+│  │  │  Handler    │─▶│   Queue     │─▶│  Engine     │  │  Tracker   │ │   │
+│  │  │             │  │             │  │             │  │            │ │   │
+│  │  │ - Validate  │  │ - Persist   │  │ - Write .md │  │ - Log hits │ │   │
+│  │  │ - Enqueue   │  │ - Status    │  │ - Reindex   │  │ - Update   │ │   │
+│  │  │ - Precheck  │  │ - Retry     │  │ - Cleanup   │  │   counts   │ │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └────────────┘ │   │
+│  │                          │                                          │   │
+│  └──────────────────────────┼──────────────────────────────────────────┘   │
+│                             ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        Reviewer Agent                                │   │
+│  │                                                                      │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐ │   │
+│  │  │  Schema     │  │  Quality    │  │  Duplicate  │  │  Decision  │ │   │
+│  │  │  Validator  │  │  Checker    │  │  Detector   │  │  Engine    │ │   │
+│  │  │             │  │             │  │             │  │            │ │   │
+│  │  │ - Required  │  │ - Tokens    │  │ - Embedding │  │ - Approve  │ │   │
+│  │  │   fields    │  │ - Single    │  │   similarity│  │ - Reject   │ │   │
+│  │  │ - Types     │  │   concept   │  │ - Exact     │  │ - Modify   │ │   │
+│  │  │ - Enums     │  │ - Coherence │  │   match     │  │ - Defer    │ │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └────────────┘ │   │
+│  │                                                                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐ │
+│  │  Phase 1 Core   │    │  Extended API   │    │  Extended CLI           │ │
+│  │  (unchanged)    │    │                 │    │                         │ │
+│  │                 │    │  POST /write/*  │    │  dmm write propose      │ │
+│  │  - Store        │    │  POST /review/* │    │  dmm write update       │ │
+│  │  - Retrieval    │    │  GET /review/*  │    │  dmm review list        │ │
+│  │  - Baseline     │    │  GET /usage/*   │    │  dmm review process     │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+2.2 Data Flow: Write Proposal
+┌─────────┐     ┌──────────┐     ┌─────────┐     ┌──────────┐     ┌─────────┐
+│  Agent  │────▶│ Proposal │────▶│ Review  │────▶│ Reviewer │────▶│ Review  │
+│         │     │ Handler  │     │ Queue   │     │ Agent    │     │ Queue   │
+│ dmm     │     │          │     │         │     │          │     │         │
+│ write   │     │ Precheck │     │ Persist │     │ Validate │     │ Update  │
+│ propose │     │ + queue  │     │ pending │     │ + decide │     │ status  │
+└─────────┘     └──────────┘     └─────────┘     └──────────┘     └────┬────┘
+                                                                       │
+                    ┌──────────────────────────────────────────────────┘
+                    │
+                    ▼
+            ┌───────────────┐
+            │   Decision    │
+            │               │
+            ├───────────────┤
+            │   APPROVED    │───▶ Commit Engine ───▶ Write .md + Reindex
+            ├───────────────┤
+            │   REJECTED    │───▶ Return feedback to agent
+            ├───────────────┤
+            │   MODIFIED    │───▶ Apply changes, then Commit
+            ├───────────────┤
+            │   DEFERRED    │───▶ Flag for human review
+            └───────────────┘
+2.3 Implementation Directory Structure (Additions)
+src/dmm/
+├── ... (Phase 1 components)
+├── writeback/
+│   ├── __init__.py
+│   ├── proposal.py          # Proposal handling and prechecks
+│   ├── queue.py             # Review queue management
+│   ├── commit.py            # File writing and reindexing
+│   └── usage.py             # Usage tracking
+├── reviewer/
+│   ├── __init__.py
+│   ├── agent.py             # Reviewer Agent orchestration
+│   ├── validators/
+│   │   ├── __init__.py
+│   │   ├── schema.py        # Schema validation
+│   │   ├── quality.py       # Quality checks
+│   │   └── duplicate.py     # Duplicate detection
+│   ├── prompts/
+│   │   ├── __init__.py
+│   │   └── reviewer.py      # System prompts for Reviewer Agent
+│   └── decisions.py         # Decision types and reasoning
+└── cli/
+    ├── ... (Phase 1 commands)
+    ├── write.py             # dmm write commands
+    └── review.py            # dmm review commands
+
+3. Data Models
+3.1 Write Proposal Model
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Optional, Any
+
+class ProposalType(Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DEPRECATE = "deprecate"
+    PROMOTE = "promote"
+
+class ProposalStatus(Enum):
+    PENDING = "pending"           # Awaiting review
+    IN_REVIEW = "in_review"       # Currently being reviewed
+    APPROVED = "approved"         # Approved, awaiting commit
+    COMMITTED = "committed"       # Successfully committed
+    REJECTED = "rejected"         # Rejected with feedback
+    MODIFIED = "modified"         # Approved with modifications
+    DEFERRED = "deferred"         # Flagged for human review
+    FAILED = "failed"             # Commit failed
+
+@dataclass
+class WriteProposal:
+    """A proposed write operation."""
+    
+    # Identity
+    proposal_id: str                           # prop_YYYYMMDD_HHMMSS_XXXX
+    
+    # Proposal details
+    type: ProposalType
+    target_path: str                           # Relative to .dmm/memory/
+    reason: str                                # Why this write is needed
+    
+    # Content (type-dependent)
+    content: Optional[str] = None              # Full content for CREATE
+    patch: Optional[str] = None                # Patch description for UPDATE
+    new_scope: Optional[str] = None            # New scope for PROMOTE
+    
+    # Metadata
+    proposed_by: str = "agent"                 # "agent" | "human" | "system"
+    proposed_at: datetime = field(default_factory=datetime.utcnow)
+    
+    # Status tracking
+    status: ProposalStatus = ProposalStatus.PENDING
+    status_updated_at: datetime = field(default_factory=datetime.utcnow)
+    
+    # Review results
+    review_result: Optional["ReviewResult"] = None
+    reviewer_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    
+    # Commit tracking
+    committed_at: Optional[datetime] = None
+    commit_error: Optional[str] = None
+    
+    # Precheck results (before queuing)
+    precheck_passed: bool = False
+    precheck_warnings: list[str] = field(default_factory=list)
+3.2 Review Result Model
+class ReviewDecision(Enum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    MODIFIED = "modified"
+    DEFERRED = "deferred"
+
+@dataclass
+class ValidationIssue:
+    """A specific validation issue found during review."""
+    
+    category: str                # "schema" | "quality" | "duplicate" | "coherence"
+    severity: str                # "error" | "warning" | "info"
+    message: str
+    suggestion: Optional[str] = None
+    auto_fixable: bool = False
+    fix: Optional[str] = None    # The fix if auto_fixable
+
+@dataclass
+class ReviewResult:
+    """The result of a review."""
+    
+    decision: ReviewDecision
+    confidence: float                          # 0.0 - 1.0
+    
+    # Validation results
+    issues: list[ValidationIssue] = field(default_factory=list)
+    
+    # For MODIFIED decision
+    modified_content: Optional[str] = None
+    modifications_summary: Optional[str] = None
+    
+    # For REJECTED decision
+    rejection_reason: str = ""
+    
+    # For DEFERRED decision
+    defer_reason: str = ""
+    requires_human: bool = False
+    
+    # Duplicate detection results
+    similar_memories: list[tuple[str, float]] = field(default_factory=list)
+    
+    # Reviewer metadata
+    review_duration_ms: int = 0
+    checks_performed: list[str] = field(default_factory=list)
+
+    def has_errors(self) -> bool:
+        return any(i.severity == "error" for i in self.issues)
+    
+    def has_warnings(self) -> bool:
+        return any(i.severity == "warning" for i in self.issues)
+3.3 Usage Record Model
+@dataclass
+class UsageRecord:
+    """Record of a memory being retrieved."""
+    
+    memory_id: str
+    query_id: str                              # Links to query_log
+    timestamp: datetime
+    relevance_score: float
+    was_included: bool                         # Made it into final pack
+    source: str                                # "baseline" | "retrieved"
+
+@dataclass
+class QueryRecord:
+    """Record of a query execution."""
+    
+    query_id: str
+    query_text: str
+    timestamp: datetime
+    budget: int
+    tokens_used: int
+    memories_returned: int
+    baseline_count: int
+    retrieved_count: int
+    duration_ms: int
+
+4. Database Schema Extensions
+4.1 Review Queue Schema (index/embeddings.db)
+-- Write proposals queue
+CREATE TABLE IF NOT EXISTS proposals (
+    proposal_id TEXT PRIMARY KEY,
+    
+    -- Proposal details
+    type TEXT NOT NULL CHECK (type IN ('create', 'update', 'deprecate', 'promote')),
+    target_path TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    
+    -- Content
+    content TEXT,                              -- For CREATE
+    patch TEXT,                                -- For UPDATE
+    new_scope TEXT,                            -- For PROMOTE
+    
+    -- Metadata
+    proposed_by TEXT NOT NULL DEFAULT 'agent',
+    proposed_at TEXT NOT NULL,
+    
+    -- Status
+    status TEXT NOT NULL DEFAULT 'pending' 
+        CHECK (status IN ('pending', 'in_review', 'approved', 'committed', 
+                          'rejected', 'modified', 'deferred', 'failed')),
+    status_updated_at TEXT NOT NULL,
+    
+    -- Review
+    reviewer_id TEXT,
+    reviewed_at TEXT,
+    review_result_json TEXT,                   -- JSON-serialized ReviewResult
+    
+    -- Commit
+    committed_at TEXT,
+    commit_error TEXT,
+    
+    -- Precheck
+    precheck_passed BOOLEAN DEFAULT FALSE,
+    precheck_warnings_json TEXT DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
+CREATE INDEX IF NOT EXISTS idx_proposals_target ON proposals(target_path);
+CREATE INDEX IF NOT EXISTS idx_proposals_proposed_at ON proposals(proposed_at DESC);
+
+-- Review audit log
+CREATE TABLE IF NOT EXISTS review_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL REFERENCES proposals(proposal_id),
+    action TEXT NOT NULL,                      -- 'created', 'reviewed', 'committed', etc.
+    actor TEXT NOT NULL,                       -- 'agent', 'reviewer', 'human', 'system'
+    timestamp TEXT NOT NULL,
+    details_json TEXT                          -- Additional context
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_log_proposal ON review_log(proposal_id);
+4.2 Usage Tracking Schema (index/stats.db)
+-- Query execution log
+CREATE TABLE IF NOT EXISTS query_log (
+    query_id TEXT PRIMARY KEY,
+    query_text TEXT NOT NULL,
+    query_embedding BLOB,                      -- For analysis
+    timestamp TEXT NOT NULL,
+    budget INTEGER NOT NULL,
+    tokens_used INTEGER NOT NULL,
+    memories_returned INTEGER NOT NULL,
+    baseline_count INTEGER NOT NULL,
+    retrieved_count INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_log_timestamp ON query_log(timestamp DESC);
+
+-- Memory usage records
+CREATE TABLE IF NOT EXISTS memory_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id TEXT NOT NULL,
+    query_id TEXT NOT NULL REFERENCES query_log(query_id),
+    timestamp TEXT NOT NULL,
+    relevance_score REAL,
+    was_included BOOLEAN NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('baseline', 'retrieved'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_usage_memory ON memory_usage(memory_id);
+CREATE INDEX IF NOT EXISTS idx_memory_usage_query ON memory_usage(query_id);
+CREATE INDEX IF NOT EXISTS idx_memory_usage_timestamp ON memory_usage(timestamp DESC);
+
+-- Aggregated stats (updated periodically)
+CREATE TABLE IF NOT EXISTS memory_stats (
+    memory_id TEXT PRIMARY KEY,
+    total_retrievals INTEGER DEFAULT 0,
+    total_inclusions INTEGER DEFAULT 0,
+    avg_relevance_score REAL DEFAULT 0.0,
+    last_retrieved_at TEXT,
+    first_retrieved_at TEXT
+);
+4.3 Conflicts Schema Preparation (index/conflicts.db)
+-- Phase 3 will populate; Phase 2 creates schema
+
+CREATE TABLE IF NOT EXISTS conflicts (
+    conflict_id TEXT PRIMARY KEY,
+    detected_at TEXT NOT NULL,
+    
+    -- Involved memories (JSON array of {id, path, summary})
+    memories_json TEXT NOT NULL,
+    
+    -- Conflict details
+    type TEXT NOT NULL,                        -- 'contradictory', 'duplicate', 'supersession'
+    confidence REAL NOT NULL,
+    description TEXT NOT NULL,
+    
+    -- Status
+    status TEXT NOT NULL DEFAULT 'unresolved'
+        CHECK (status IN ('unresolved', 'in_progress', 'resolved', 'dismissed')),
+    
+    -- Resolution
+    resolved_at TEXT,
+    resolution_action TEXT,                    -- 'deprecate', 'merge', 'clarify', 'dismiss'
+    resolution_target TEXT,                    -- Memory ID affected
+    resolution_reason TEXT,
+    resolved_by TEXT                           -- 'agent', 'human', 'system'
+);
+
+CREATE INDEX IF NOT EXISTS idx_conflicts_status ON conflicts(status);
+CREATE INDEX IF NOT EXISTS idx_conflicts_detected ON conflicts(detected_at DESC);
+
+-- Conflict-memory mapping (for queries)
+CREATE TABLE IF NOT EXISTS conflict_memories (
+    conflict_id TEXT NOT NULL REFERENCES conflicts(conflict_id),
+    memory_id TEXT NOT NULL,
+    role TEXT NOT NULL,                        -- 'primary', 'secondary'
+    PRIMARY KEY (conflict_id, memory_id)
+);
+
+5. Component Specifications
+5.1 Proposal Handler
+Module: dmm/writeback/proposal.py
+Responsibilities:
+    • Accept write proposals from CLI/API 
+    • Perform prechecks before queuing 
+    • Generate proposal IDs 
+    • Enqueue for review 
+Interface:
+class ProposalHandler:
+    def __init__(
+        self,
+        queue: ReviewQueue,
+        store: MemoryStore,
+        parser: MemoryParser
+    ):
+        pass
+    
+    async def propose_create(
+        self,
+        path: str,
+        content: str,
+        reason: str,
+        proposed_by: str = "agent"
+    ) -> ProposalResult:
+        """
+        Propose creating a new memory.
+        
+        Prechecks:
+        1. Path doesn't already exist
+        2. Content parses as valid memory
+        3. Path is in allowed directory
+        4. Token count in range
+        """
+        pass
+    
+    async def propose_update(
+        self,
+        path: str,
+        patch: str,
+        reason: str,
+        proposed_by: str = "agent"
+    ) -> ProposalResult:
+        """
+        Propose updating an existing memory.
+        
+        Prechecks:
+        1. Path exists
+        2. Patch description is non-empty
+        3. Memory is not deprecated
+        """
+        pass
+    
+    async def propose_deprecate(
+        self,
+        path: str,
+        reason: str,
+        proposed_by: str = "agent"
+    ) -> ProposalResult:
+        """
+        Propose deprecating a memory.
+        
+        Prechecks:
+        1. Path exists
+        2. Memory is not already deprecated
+        3. Memory is not in baseline (requires extra confirmation)
+        """
+        pass
+    
+    async def propose_promote(
+        self,
+        path: str,
+        new_scope: str,
+        reason: str,
+        proposed_by: str = "agent"
+    ) -> ProposalResult:
+        """
+        Propose promoting/demoting a memory's scope.
+        
+        Prechecks:
+        1. Path exists
+        2. New scope is valid
+        3. New scope differs from current
+        4. If promoting to baseline, extra validation
+        """
+        pass
+
+@dataclass
+class ProposalResult:
+    success: bool
+    proposal_id: Optional[str]
+    precheck_passed: bool
+    precheck_warnings: list[str]
+    precheck_errors: list[str]
+    message: str
+Precheck Rules:
+Proposal Type	Prechecks
+CREATE	Path available, content parseable, valid directory, token count 300-800
+UPDATE	Path exists, not deprecated, patch non-empty
+DEPRECATE	Path exists, not already deprecated, not baseline (warn)
+PROMOTE	Path exists, valid scope, scope change, baseline requires justification
+5.2 Review Queue
+Module: dmm/writeback/queue.py
+Responsibilities:
+    • Persist proposals to database 
+    • Track proposal status 
+    • Retrieve proposals for review 
+    • Update status on review completion 
+Interface:
+class ReviewQueue:
+    def __init__(self, db_path: Path):
+        pass
+    
+    async def enqueue(self, proposal: WriteProposal) -> str:
+        """Add proposal to queue. Returns proposal_id."""
+        pass
+    
+    async def get_pending(self, limit: int = 10) -> list[WriteProposal]:
+        """Get pending proposals, oldest first."""
+        pass
+    
+    async def get_proposal(self, proposal_id: str) -> Optional[WriteProposal]:
+        """Get a specific proposal by ID."""
+        pass
+    
+    async def update_status(
+        self,
+        proposal_id: str,
+        status: ProposalStatus,
+        review_result: Optional[ReviewResult] = None
+    ) -> bool:
+        """Update proposal status after review."""
+        pass
+    
+    async def get_by_status(
+        self,
+        status: ProposalStatus,
+        limit: int = 50
+    ) -> list[WriteProposal]:
+        """Get proposals by status."""
+        pass
+    
+    async def get_by_path(self, path: str) -> list[WriteProposal]:
+        """Get all proposals for a path (for conflict checking)."""
+        pass
+    
+    async def get_stats(self) -> QueueStats:
+        """Get queue statistics."""
+        pass
+
+@dataclass
+class QueueStats:
+    pending: int
+    in_review: int
+    approved: int
+    committed: int
+    rejected: int
+    deferred: int
+    failed: int
+    total: int
+    oldest_pending: Optional[datetime]
+5.3 Reviewer Agent
+Module: dmm/reviewer/agent.py
+Responsibilities:
+    • Orchestrate validation checks 
+    • Make approval decisions 
+    • Generate feedback for rejections 
+    • Apply auto-fixes where possible 
+Interface:
+class ReviewerAgent:
+    def __init__(
+        self,
+        store: MemoryStore,
+        embedder: MemoryEmbedder,
+        parser: MemoryParser,
+        config: ReviewerConfig
+    ):
+        pass
+    
+    async def review(self, proposal: WriteProposal) -> ReviewResult:
+        """
+        Review a proposal and return a decision.
+        
+        Validation pipeline:
+        1. Schema validation
+        2. Quality checks
+        3. Duplicate detection
+        4. Coherence analysis (LLM-based if enabled)
+        5. Decision synthesis
+        """
+        pass
+    
+    async def review_batch(
+        self,
+        proposals: list[WriteProposal]
+    ) -> list[ReviewResult]:
+        """Review multiple proposals."""
+        pass
+
+@dataclass
+class ReviewerConfig:
+    # Validation thresholds
+    min_tokens: int = 300
+    max_tokens: int = 800
+    duplicate_threshold: float = 0.92          # Cosine similarity for duplicate
+    similar_threshold: float = 0.85            # Flag as similar but not duplicate
+    
+    # LLM settings (for coherence check)
+    use_llm_validation: bool = True
+    llm_model: str = "claude-3-haiku-20240307"
+    llm_timeout: float = 30.0
+    
+    # Auto-fix settings
+    auto_fix_enabled: bool = True
+    auto_approve_threshold: float = 0.95       # Confidence for auto-approve
+    
+    # Baseline protection
+    require_human_for_baseline: bool = True
+Validation Pipeline:
+async def review(self, proposal: WriteProposal) -> ReviewResult:
+    issues: list[ValidationIssue] = []
+    checks_performed: list[str] = []
+    
+    # 1. Schema validation
+    checks_performed.append("schema")
+    schema_issues = await self._validate_schema(proposal)
+    issues.extend(schema_issues)
+    
+    # 2. Quality checks
+    checks_performed.append("quality")
+    quality_issues = await self._check_quality(proposal)
+    issues.extend(quality_issues)
+    
+    # 3. Duplicate detection
+    checks_performed.append("duplicate")
+    dup_issues, similar = await self._detect_duplicates(proposal)
+    issues.extend(dup_issues)
+    
+    # 4. Coherence analysis (LLM)
+    if self.config.use_llm_validation:
+        checks_performed.append("coherence")
+        coherence_issues = await self._check_coherence(proposal)
+        issues.extend(coherence_issues)
+    
+    # 5. Synthesize decision
+    decision = self._synthesize_decision(issues, proposal)
+    
+    return ReviewResult(
+        decision=decision.decision,
+        confidence=decision.confidence,
+        issues=issues,
+        similar_memories=similar,
+        checks_performed=checks_performed,
+        # ... other fields
+    )
+5.4 Schema Validator
+Module: dmm/reviewer/validators/schema.py
+Responsibilities:
+    • Validate frontmatter structure 
+    • Check required fields 
+    • Validate enum values 
+    • Check field types 
+Interface:
+class SchemaValidator:
+    def __init__(self, parser: MemoryParser):
+        pass
+    
+    async def validate(self, proposal: WriteProposal) -> list[ValidationIssue]:
+        """
+        Validate the schema of proposed content.
+        
+        For CREATE: Full validation
+        For UPDATE: Validate patch doesn't break schema
+        For DEPRECATE: Check current status allows deprecation
+        For PROMOTE: Validate new scope value
+        """
+        pass
+
+# Validation rules
+SCHEMA_RULES = {
+    "id": {
+        "required": True,
+        "type": str,
+        "pattern": r"^mem_\d{4}_\d{2}_\d{2}_\d{3}$"
+    },
+    "tags": {
+        "required": True,
+        "type": list,
+        "min_length": 1,
+        "max_length": 10
+    },
+    "scope": {
+        "required": True,
+        "type": str,
+        "enum": ["baseline", "global", "agent", "project", "ephemeral"]
+    },
+    "priority": {
+        "required": True,
+        "type": float,
+        "min": 0.0,
+        "max": 1.0
+    },
+    "confidence": {
+        "required": True,
+        "type": str,
+        "enum": ["experimental", "active", "stable", "deprecated"]
+    },
+    "status": {
+        "required": True,
+        "type": str,
+        "enum": ["active", "deprecated"]
+    }
+}
+5.5 Quality Checker
+Module: dmm/reviewer/validators/quality.py
+Responsibilities:
+    • Check token count range 
+    • Detect multiple concepts 
+    • Verify title extraction 
+    • Check self-containment 
+Interface:
+class QualityChecker:
+    def __init__(self, token_counter: TokenCounter, config: QualityConfig):
+        pass
+    
+    async def check(self, proposal: WriteProposal) -> list[ValidationIssue]:
+        """
+        Check quality criteria.
+        
+        Checks:
+        1. Token count in range (300-800)
+        2. Single concept (heuristic + optional LLM)
+        3. Title present and meaningful
+        4. Body is self-contained
+        5. Rationale included (for constraints)
+        """
+        pass
+
+@dataclass
+class QualityConfig:
+    min_tokens: int = 300
+    max_tokens: int = 800
+    require_rationale_for_constraints: bool = True
+    max_headings: int = 5                      # Heuristic for single concept
+Single Concept Heuristics:
+def _check_single_concept(self, content: str) -> list[ValidationIssue]:
+    """
+    Heuristic checks for single concept:
+    1. No more than 5 H2+ headings
+    2. No "Part 1", "Part 2" patterns
+    3. No multiple unrelated topics in tags
+    4. Word count reasonable for single idea
+    """
+    pass
+5.6 Duplicate Detector
+Module: dmm/reviewer/validators/duplicate.py
+Responsibilities:
+    • Find exact duplicates (same path) 
+    • Find semantic duplicates (high similarity) 
+    • Find related memories (moderate similarity) 
+Interface:
+class DuplicateDetector:
+    def __init__(
+        self,
+        store: MemoryStore,
+        embedder: MemoryEmbedder,
+        config: DuplicateConfig
+    ):
+        pass
+    
+    async def detect(
+        self,
+        proposal: WriteProposal
+    ) -> tuple[list[ValidationIssue], list[tuple[str, float]]]:
+        """
+        Detect duplicates and similar memories.
+        
+        Returns:
+        - List of validation issues (errors for duplicates)
+        - List of (path, similarity) for similar memories
+        """
+        pass
+
+@dataclass
+class DuplicateConfig:
+    duplicate_threshold: float = 0.92          # Reject as duplicate
+    similar_threshold: float = 0.85            # Flag as similar (warning)
+    max_similar_to_return: int = 5
+Detection Algorithm:
+async def detect(self, proposal: WriteProposal) -> ...:
+    issues = []
+    similar = []
+    
+    if proposal.type != ProposalType.CREATE:
+        return issues, similar
+    
+    # 1. Check exact path match
+    existing = await self.store.get_memory_by_path(proposal.target_path)
+    if existing:
+        issues.append(ValidationIssue(
+            category="duplicate",
+            severity="error",
+            message=f"Memory already exists at {proposal.target_path}"
+        ))
+        return issues, similar
+    
+    # 2. Embed proposed content
+    embedding = self.embedder.embed_query(proposal.content)
+    
+    # 3. Search for similar
+    results = await self.store.search_by_content(
+        query_embedding=embedding,
+        directories=[],  # Search all
+        filters=SearchFilters(exclude_deprecated=True),
+        limit=20
+    )
+    
+    # 4. Categorize by similarity
+    for memory, score in results:
+        if score >= self.config.duplicate_threshold:
+            issues.append(ValidationIssue(
+                category="duplicate",
+                severity="error",
+                message=f"Near-duplicate of {memory.path} (similarity: {score:.2f})",
+                suggestion=f"Consider updating {memory.path} instead"
+            ))
+        elif score >= self.config.similar_threshold:
+            similar.append((memory.path, score))
+    
+    # 5. Warning for similar memories
+    if similar and not issues:
+        issues.append(ValidationIssue(
+            category="duplicate",
+            severity="warning",
+            message=f"Found {len(similar)} similar memories",
+            suggestion="Review similar memories to avoid redundancy"
+        ))
+    
+    return issues, similar
+5.7 Commit Engine
+Module: dmm/writeback/commit.py
+Responsibilities:
+    • Write memory files to filesystem 
+    • Trigger reindexing 
+    • Handle atomic commits 
+    • Rollback on failure 
+Interface:
+class CommitEngine:
+    def __init__(
+        self,
+        memory_root: Path,
+        store: MemoryStore,
+        indexer: Indexer,
+        queue: ReviewQueue
+    ):
+        pass
+    
+    async def commit(self, proposal: WriteProposal) -> CommitResult:
+        """
+        Commit an approved proposal.
+        
+        For CREATE:
+        1. Write file to target_path
+        2. Trigger indexing
+        3. Update proposal status
+        
+        For UPDATE:
+        1. Load existing file
+        2. Apply modifications
+        3. Write file
+        4. Trigger reindexing
+        
+        For DEPRECATE:
+        1. Update file's status to deprecated
+        2. Move to deprecated/ directory
+        3. Trigger reindexing
+        
+        For PROMOTE:
+        1. Update file's scope
+        2. Move to appropriate directory
+        3. Trigger reindexing
+        """
+        pass
+    
+    async def rollback(self, proposal: WriteProposal) -> bool:
+        """Rollback a failed commit."""
+        pass
+
+@dataclass
+class CommitResult:
+    success: bool
+    proposal_id: str
+    action_taken: str
+    file_path: Optional[str]
+    error: Optional[str]
+    indexed: bool
+Commit Workflow (CREATE):
+async def _commit_create(self, proposal: WriteProposal) -> CommitResult:
+    target = self.memory_root / proposal.target_path
+    
+    try:
+        # 1. Ensure directory exists
+        target.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 2. Write file (atomic via temp file)
+        temp_path = target.with_suffix('.tmp')
+        temp_path.write_text(proposal.content)
+        temp_path.rename(target)
+        
+        # 3. Trigger indexing
+        await self.indexer.index_file(target)
+        
+        # 4. Update proposal status
+        await self.queue.update_status(
+            proposal.proposal_id,
+            ProposalStatus.COMMITTED
+        )
+        
+        # 5. Phase 3 hook: trigger conflict scan
+        # await self.conflict_detector.scan_new_memory(proposal.target_path)
+        
+        return CommitResult(
+            success=True,
+            proposal_id=proposal.proposal_id,
+            action_taken="created",
+            file_path=str(target),
+            indexed=True
+        )
+        
+    except Exception as e:
+        # Rollback
+        if temp_path.exists():
+            temp_path.unlink()
+        
+        await self.queue.update_status(
+            proposal.proposal_id,
+            ProposalStatus.FAILED,
+            commit_error=str(e)
+        )
+        
+        return CommitResult(
+            success=False,
+            proposal_id=proposal.proposal_id,
+            action_taken="failed",
+            error=str(e),
+            indexed=False
+        )
+5.8 Usage Tracker
+Module: dmm/writeback/usage.py
+Responsibilities:
+    • Record query executions 
+    • Track which memories were retrieved 
+    • Update memory usage counts 
+    • Compute aggregate statistics 
+Interface:
+class UsageTracker:
+    def __init__(self, stats_db: Path, store: MemoryStore):
+        pass
+    
+    async def log_query(
+        self,
+        query_text: str,
+        query_embedding: list[float],
+        budget: int,
+        result: RetrievalResult,
+        duration_ms: int
+    ) -> str:
+        """
+        Log a query execution.
+        
+        Returns query_id.
+        """
+        pass
+    
+    async def log_usage(
+        self,
+        query_id: str,
+        memory_id: str,
+        relevance_score: float,
+        was_included: bool,
+        source: str
+    ) -> None:
+        """Log individual memory usage."""
+        pass
+    
+    async def update_memory_stats(self, memory_id: str) -> None:
+        """Update aggregated stats for a memory."""
+        pass
+    
+    async def get_memory_stats(self, memory_id: str) -> Optional[MemoryStats]:
+        """Get usage stats for a memory."""
+        pass
+    
+    async def get_least_used(self, limit: int = 20) -> list[MemoryStats]:
+        """Get least-used memories (candidates for deprecation)."""
+        pass
+    
+    async def get_most_used(self, limit: int = 20) -> list[MemoryStats]:
+        """Get most-used memories (candidates for promotion)."""
+        pass
+
+@dataclass
+class MemoryStats:
+    memory_id: str
+    path: str
+    total_retrievals: int
+    total_inclusions: int
+    inclusion_rate: float                      # inclusions / retrievals
+    avg_relevance_score: float
+    last_retrieved_at: Optional[datetime]
+    days_since_last_retrieval: Optional[int]
+Integration with Phase 1 Retrieval:
+# In retrieval/router.py - Phase 2 modification
+
+async def retrieve(self, query: str, budget: int, filters: SearchFilters) -> RetrievalResult:
+    start_time = time.time()
+    
+    # Phase 1 retrieval logic
+    result = await self._do_retrieval(query, budget, filters)
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    
+    # Phase 2 addition: log usage
+    query_embedding = self.embedder.embed_query(query)
+    query_id = await self.usage_tracker.log_query(
+        query_text=query,
+        query_embedding=query_embedding,
+        budget=budget,
+        result=result,
+        duration_ms=duration_ms
+    )
+    
+    # Log individual memory usage
+    for entry in result.entries:
+        await self.usage_tracker.log_usage(
+            query_id=query_id,
+            memory_id=entry.memory_id,
+            relevance_score=entry.relevance_score,
+            was_included=True,
+            source=entry.source
+        )
+    
+    # Update memory stats in main store
+    for entry in result.entries:
+        await self.store.increment_usage(entry.memory_id)
+    
+    return result
+
+6. Reviewer Agent System Prompt
+6.1 Full System Prompt
+REVIEWER_SYSTEM_PROMPT = """
+You are a Memory Reviewer for the Dynamic Markdown Memory (DMM) system. Your job 
+is to validate proposed memory writes before they are committed to the memory store.
+
+## Your Role
+
+You are the quality gate. Every proposed memory must pass your review before it 
+becomes part of the agent's persistent knowledge. You balance being helpful (not 
+rejecting good memories) with being protective (not allowing bad memories to pollute 
+the system).
+
+## Validation Criteria
+
+For each proposal, evaluate:
+
+### 1. Schema Compliance
+- All required fields present (id, tags, scope, priority, confidence, status)
+- Field values are valid (scope is one of: baseline, global, agent, project, ephemeral)
+- ID follows format: mem_YYYY_MM_DD_NNN
+- Priority is between 0.0 and 1.0
+- Tags is a non-empty array
+
+### 2. Token Count
+- Content must be between 300-800 tokens
+- If under 300: Suggest expanding with rationale or context
+- If over 800: Suggest splitting into multiple memories
+
+### 3. Single Concept
+- Each memory should contain exactly ONE idea, rule, fact, or procedure
+- Red flags for multiple concepts:
+  - More than 5 headings
+  - "Part 1", "Part 2" patterns
+  - Unrelated topics in tags
+  - "Also," "Additionally," "Furthermore" introducing new topics
+
+### 4. Coherence
+- Title accurately reflects content
+- Tags are relevant to the content
+- Scope is appropriate for the content type
+- Body supports the title's claim
+
+### 5. Quality
+- Self-contained (no undefined references)
+- Human-readable
+- Actionable (for rules/constraints)
+- Includes rationale (for decisions/constraints)
+
+### 6. Duplication
+- Not semantically identical to existing memory
+- If similar memory exists, explain how this differs
+
+## Decision Types
+
+Respond with one of:
+
+### APPROVED
+Use when:
+- All criteria pass
+- Any warnings are minor
+Respond: "APPROVED" followed by brief confirmation
+
+### REJECTED  
+Use when:
+- Critical errors (schema, duplicate)
+- Quality is unacceptable
+Respond: "REJECTED" followed by specific issues and suggestions
+
+### MODIFIED
+Use when:
+- Mostly good but needs small fixes
+- You can provide the fixed version
+Respond: "MODIFIED" followed by the corrected content and explanation
+
+### DEFERRED
+Use when:
+- Touches baseline scope (requires human approval)
+- Conflicts with existing memories
+- You're uncertain
+Respond: "DEFERRED" followed by why human review is needed
+
+## Response Format
+
+DECISION: [APPROVED|REJECTED|MODIFIED|DEFERRED] CONFIDENCE: [0.0-1.0]
+ISSUES:
+    • [severity] [category]: [message] 
+    • ... 
+SIMILAR_MEMORIES:
+    • [path] (similarity: [score]) 
+    • ... 
+REASONING: [Brief explanation of your decision]
+MODIFIED_CONTENT: (only if MODIFIED) [The corrected content]
+
+## Important Guidelines
+
+1. Be constructive: When rejecting, always explain how to fix it
+2. Be consistent: Apply the same standards to all proposals
+3. Be efficient: Don't over-explain approved memories
+4. Be protective of baseline: Always defer baseline changes to humans
+5. When in doubt, defer: It's better to ask for human review than approve bad memory
+
+## Context
+
+You will receive:
+- The proposal type (create, update, deprecate, promote)
+- The target path
+- The reason given by the proposer
+- The content (for create/update)
+- Results of automated checks (schema, duplicates)
+- List of similar existing memories
+
+Make your decision based on all available information.
+"""
+6.2 Review Request Format
+def format_review_request(
+    proposal: WriteProposal,
+    automated_checks: list[ValidationIssue],
+    similar_memories: list[tuple[str, float]]
+) -> str:
+    """Format a proposal for LLM review."""
+    
+    return f"""
+## Proposal to Review
+
+**Type:** {proposal.type.value}
+**Target Path:** {proposal.target_path}
+**Reason:** {proposal.reason}
+**Proposed By:** {proposal.proposed_by}
+
+## Content
+
+```markdown
+{proposal.content or proposal.patch or f"Promote to: {proposal.new_scope}"}
+Automated Check Results
+{format_issues(automated_checks)}
+Similar Existing Memories
+{format_similar(similar_memories)}
+Your Review
+Please evaluate this proposal according to the criteria and provide your decision. """
+
+---
+
+## 7. API Endpoints
+
+### 7.1 Write Endpoints
+
+POST /write/propose Request: { "type": "create" | "update" | "deprecate" | "promote", "path": string, "reason": string, "content": string?, // For create "patch": string?, // For update "new_scope": string? // For promote } Response: { "success": boolean, "proposal_id": string?, "precheck_passed": boolean, "precheck_warnings": string[], "precheck_errors": string[], "message": string }
+GET /write/proposal/{proposal_id} Response: WriteProposal (JSON)
+GET /write/proposals Query params: status?, limit?, offset? Response: { "proposals": WriteProposal[], "total": int, "stats": QueueStats }
+
+### 7.2 Review Endpoints
+
+POST /review/process/{proposal_id} Request: { "force": boolean? // Skip auto-approve threshold } Response: { "proposal_id": string, "decision": string, "result": ReviewResult, "committed": boolean?, "commit_result": CommitResult? }
+POST /review/process-batch Request: { "limit": int?, "force": boolean? } Response: { "processed": int, "results": ReviewBatchResult[] }
+POST /review/approve/{proposal_id} Request: { "bypass_reviewer": boolean?, "reason": string? } Response: CommitResult
+POST /review/reject/{proposal_id} Request: { "reason": string } Response: { "success": boolean, "proposal_id": string }
+GET /review/queue Response: { "pending": WriteProposal[], "stats": QueueStats }
+
+### 7.3 Usage Endpoints
+
+GET /usage/memory/{memory_id} Response: MemoryStats
+GET /usage/memories Query params: sort_by?, order?, limit? Response: { "memories": MemoryStats[], "total": int }
+GET /usage/queries Query params: limit?, after? Response: { "queries": QueryRecord[], "total": int }
+
+---
+
+## 8. CLI Commands
+
+### 8.1 Write Commands
+
+dmm write ├── propose # Propose a new memory │ --path <path> # Target path (required) │ --reason <text> # Why this memory (required) │ --content <text> # Content (or --file) │ --file <path> # Read content from file │ --type <type> # create|update|deprecate|promote │ ├── update # Shorthand for propose --type update │ --path <path> │ --patch <text> │ --reason <text> │ ├── deprecate # Shorthand for propose --type deprecate │ --path <path> │ --reason <text> │ └── promote # Shorthand for propose --type promote --path <path> --new-scope <scope> --reason <text>
+
+### 8.2 Review Commands
+
+dmm review ├── list # List pending proposals │ --status <status> # Filter by status │ --limit <n> │ --json # Output as JSON │ ├── show <proposal_id> # Show proposal details │ --json │ ├── process # Process pending proposals │ --id <proposal_id> # Process specific proposal │ --all # Process all pending │ --limit <n> # Max to process │ --force # Skip auto-approve threshold │ ├── approve <proposal_id> # Manually approve │ --bypass-reviewer # Skip reviewer (use sparingly) │ --reason <text> │ ├── reject <proposal_id> # Manually reject │ --reason <text> # Required │ └── stats # Show queue statistics --json
+
+### 8.3 Usage Commands
+
+dmm usage ├── show <memory_id> # Show usage stats for memory │ --json │ ├── top # Most-used memories │ --limit <n> │ --json │ ├── stale # Least-used memories │ --days <n> # Not used in N days │ --limit <n> │ --json │ └── queries # Recent queries --limit <n> --after <datetime> --json
+
+### 8.4 Example CLI Sessions
+
+```bash
+# Propose a new memory
+$ dmm write propose \
+    --path "project/constraints/no_orm.md" \
+    --reason "Discovered ORMs cause issues with our custom schema" \
+    --file ./new_memory.md
+
+Proposal created: prop_20260111_143052_a1b2
+Precheck: PASSED
+Warnings: None
+Status: pending
+
+Use 'dmm review process --id prop_20260111_143052_a1b2' to review.
+
+# List pending reviews
+$ dmm review list
+┌─────────────────────────────┬────────┬─────────────────────────────────┬──────────┐
+│ ID                          │ Type   │ Path                            │ Age      │
+├─────────────────────────────┼────────┼─────────────────────────────────┼──────────┤
+│ prop_20260111_143052_a1b2   │ create │ project/constraints/no_orm.md   │ 2m ago   │
+│ prop_20260111_142015_c3d4   │ update │ project/auth/session.md         │ 12m ago  │
+└─────────────────────────────┴────────┴─────────────────────────────────┴──────────┘
+
+Pending: 2 | In Review: 0 | Approved: 5 | Rejected: 1
+
+# Process a specific proposal
+$ dmm review process --id prop_20260111_143052_a1b2
+
+Reviewing proposal prop_20260111_143052_a1b2...
+
+Checks performed:
+  ✓ Schema validation
+  ✓ Quality checks
+  ✓ Duplicate detection
+  ✓ Coherence analysis
+
+Decision: APPROVED
+Confidence: 0.94
+
+Committing...
+  ✓ File written to .dmm/memory/project/constraints/no_orm.md
+  ✓ Indexed successfully
+
+Proposal committed.
+
+# Check usage stats
+$ dmm usage top --limit 5
+┌────────────────────────────────────┬────────────┬──────────────┬───────────────┐
+│ Path                               │ Retrievals │ Inclusions   │ Avg Relevance │
+├────────────────────────────────────┼────────────┼──────────────┼───────────────┤
+│ baseline/identity.md               │ 142        │ 142 (100%)   │ 1.00          │
+│ project/constraints/no_bg_jobs.md  │ 87         │ 72 (83%)     │ 0.86          │
+│ global/security/auth.md            │ 65         │ 58 (89%)     │ 0.91          │
+│ project/auth/session.md            │ 52         │ 45 (87%)     │ 0.88          │
+│ agent/tone/professional.md         │ 48         │ 48 (100%)    │ 0.95          │
+└────────────────────────────────────┴────────────┴──────────────┴───────────────┘
+
+# Find stale memories
+$ dmm usage stale --days 30
+┌────────────────────────────────────┬───────────────────┬────────────┐
+│ Path                               │ Last Retrieved    │ Retrievals │
+├────────────────────────────────────┼───────────────────┼────────────┤
+│ ephemeral/old_finding.md           │ 45 days ago       │ 3          │
+│ project/deprecated_api.md          │ 38 days ago       │ 7          │
+└────────────────────────────────────┴───────────────────┴────────────┘
+
+Consider deprecating these memories.
+
+9. BOOT.md Updates for Phase 2
+9.1 Updated BOOT.md
+# DMM Boot Instructions (Phase 2)
+
+You have access to a Dynamic Markdown Memory (DMM) system that provides 
+relevant context for your tasks and allows you to record new knowledge.
+
+## What You Always Have
+
+Every Memory Pack includes the **Baseline Pack**—critical context that applies 
+to all tasks. This is automatically included; you don't need to query for it.
+
+## How to Retrieve Memory
+
+When you need context beyond baseline:
+
+dmm query "<describe your task or question>" --budget 1200
+
+## How to Write Memory
+
+All writes go through a review process. You propose; the Reviewer Agent validates.
+
+### Creating New Memory
+
+When you discover something worth remembering:
+
+dmm write propose 
+--path "project/constraints/new_rule.md" 
+--reason "Discovered during debugging session" 
+--content "$(cat <<'EOF'
+id: mem_2026_01_11_001 tags: [constraints, database] scope: project priority: 0.7 confidence: active status: active
+Constraint: No Direct SQL in Handlers
+All database queries must go through the repository layer... EOF )"
+
+### Updating Existing Memory
+
+When a memory needs modification:
+
+dmm write update 
+--path "project/auth/session.md" 
+--patch "Change token expiry from 24h to 1h per security audit" 
+--reason "Security audit requirement SEC-2026-042"
+
+### Deprecating Memory
+
+When a memory is no longer valid:
+
+dmm write deprecate 
+--path "project/old_api_pattern.md" 
+--reason "Superseded by new_api_pattern.md after refactor"
+
+### Promoting Memory
+
+When ephemeral knowledge proves durable:
+
+dmm write promote 
+--path "ephemeral/useful_pattern.md" 
+--new-scope project 
+--reason "Used successfully in 5+ tasks"
+
+## What to Write
+
+Write memory when:
+- A new durable rule is discovered
+- An architectural decision is made
+- A repeated fix should become a procedure
+- An assumption is corrected
+- A constraint is identified
+
+## What NOT to Write
+
+- Transient conversation context
+- Raw logs or debug output  
+- One-off solutions unlikely to recur
+- Information already in existing memories
+- Anything sensitive not intended for the repo
+
+## Review Process
+
+Your proposals are reviewed by the Reviewer Agent, which checks:
+- Schema compliance
+- Token count (300-800)
+- Single concept per file
+- No duplicates
+- Coherence and quality
+
+Possible outcomes:
+- **APPROVED**: Committed automatically
+- **REJECTED**: You'll receive feedback to fix issues
+- **MODIFIED**: Approved with corrections applied
+- **DEFERRED**: Flagged for human review (especially baseline changes)
+
+## Checking Proposal Status
+
+dmm review list # See pending proposals dmm review show <id> # See proposal details
+
+## Memory Quality Guidelines
+
+Good memories are:
+- **Atomic**: One concept per file
+- **Self-contained**: No undefined references
+- **Actionable**: Clear what to do with the information
+- **Justified**: Include rationale for decisions
+- **Appropriately scoped**: baseline < global < project < ephemeral
+
+## Current Limitations (Phase 2)
+
+- Conflict detection is limited (Phase 3 will improve this)
+- If you notice contradictory memories, flag them manually
+- Baseline modifications always require human approval
+
+10. Testing Strategy
+10.1 Unit Tests
+Component	Test Cases
+ProposalHandler	Valid proposals, precheck failures, path validation, duplicate path
+ReviewQueue	Enqueue, status updates, queries by status, concurrent access
+SchemaValidator	Valid schemas, missing fields, invalid enums, malformed YAML
+QualityChecker	Token counts, multiple concepts detection, title extraction
+DuplicateDetector	Exact match, semantic duplicate, similar (warning), no match
+CommitEngine	Successful commit, rollback on failure, atomic writes, reindexing
+UsageTracker	Query logging, usage recording, stats aggregation
+10.2 Integration Tests
+Scenario	Description
+Full write flow	Propose → Review → Approve → Commit → Indexed
+Rejection flow	Propose → Review → Reject → Feedback returned
+Modification flow	Propose → Review → Modify → Commit modified
+Duplicate rejection	Propose duplicate → Detected → Rejected
+Usage tracking	Query → Retrieval → Usage logged → Stats updated
+Concurrent proposals	Multiple proposals for same path → Handled correctly
+10.3 Reviewer Agent Tests
+Test	Description
+Schema validation	LLM correctly identifies schema issues
+Quality assessment	LLM correctly identifies quality issues
+Single concept check	LLM detects multiple concepts
+Coherence check	LLM catches title/content mismatch
+Decision consistency	Same input → consistent decision
+Baseline protection	Baseline proposals always deferred
+10.4 Test Fixtures
+tests/fixtures/proposals/
+├── valid/
+│   ├── create_simple.json
+│   ├── create_with_rationale.json
+│   ├── update_patch.json
+│   ├── deprecate.json
+│   └── promote.json
+├── invalid/
+│   ├── missing_required_fields.json
+│   ├── token_count_low.json
+│   ├── token_count_high.json
+│   ├── multiple_concepts.json
+│   ├── duplicate_path.json
+│   └── semantic_duplicate.json
+└── edge_cases/
+    ├── baseline_create.json
+    ├── unicode_content.json
+    └── max_token_boundary.json
+10.5 Performance Benchmarks
+Metric	Target
+Proposal precheck	< 100ms
+Review (automated only)	< 500ms
+Review (with LLM)	< 5s
+Commit (create)	< 200ms
+Usage logging	< 50ms
+Stats aggregation	< 500ms
+
+11. Deliverables Checklist
+11.1 Code Deliverables
+    • [ ] ProposalHandler with prechecks for all proposal types 
+    • [ ] ReviewQueue with SQLite persistence 
+    • [ ] SchemaValidator with full schema validation 
+    • [ ] QualityChecker with token count and single-concept checks 
+    • [ ] DuplicateDetector with embedding-based detection 
+    • [ ] ReviewerAgent with LLM integration 
+    • [ ] CommitEngine with atomic writes and rollback 
+    • [ ] UsageTracker with query and memory logging 
+    • [ ] Extended daemon API with write/review/usage endpoints 
+    • [ ] Extended CLI with write/review/usage commands 
+11.2 Configuration Deliverables
+    • [ ] Reviewer Agent system prompt 
+    • [ ] Review configuration defaults 
+    • [ ] Usage tracking configuration 
+11.3 Documentation Deliverables
+    • [ ] Updated BOOT.md with write instructions 
+    • [ ] Write operation reference 
+    • [ ] Review process documentation 
+    • [ ] Usage tracking documentation 
+11.4 Database Deliverables
+    • [ ] Proposals table schema 
+    • [ ] Review log schema 
+    • [ ] Query log schema 
+    • [ ] Memory usage schema 
+    • [ ] Conflicts schema (prepared for Phase 3) 
+11.5 Test Deliverables
+    • [ ] Unit test suite (>80% coverage for new components) 
+    • [ ] Integration test suite 
+    • [ ] Reviewer Agent test suite 
+    • [ ] Test fixtures for proposals 
+
+12. Phase 3 Preparation
+12.1 Interfaces for Phase 3
+Phase 2 establishes these interfaces that Phase 3 (Conflict Detection) will extend:
+Interface	Phase 2 State	Phase 3 Extension
+index/conflicts.db	Schema created, empty	Populated by Conflict Detector
+CommitEngine.commit()	Commits without conflict check	Triggers conflict scan post-commit
+ReviewerAgent.review()	No conflict awareness	Flags potential conflicts
+Memory related field	Stored, not used	Used for conflict detection
+Memory supersedes field	Triggers deprecation	Used for conflict chain analysis
+12.2 Hooks for Phase 3
+# In writeback/commit.py
+
+async def commit(self, proposal: WriteProposal) -> CommitResult:
+    result = await self._do_commit(proposal)
+    
+    if result.success:
+        # Phase 3 hook: trigger conflict scan
+        # await self.conflict_detector.scan_new_memory(proposal.target_path)
+        pass
+    
+    return result
+
+# In reviewer/agent.py
+
+async def review(self, proposal: WriteProposal) -> ReviewResult:
+    # ... existing validation ...
+    
+    # Phase 3 hook: check for potential conflicts
+    # conflicts = await self.conflict_detector.check_proposal(proposal)
+    # if conflicts:
+    #     result.potential_conflicts = conflicts
+    
+    return result
+12.3 Conflict Detection Preparation
+Phase 2 collects data that Phase 3 will use:
+    • Related memories: The related field in memories tracks connections 
+    • Supersession chains: The supersedes field tracks what replaced what 
+    • Tag clustering: Usage tracker records which memories appear together 
+    • Embedding similarity: Stored embeddings enable clustering 
+
+13. Risk Mitigation
+Risk	Probability	Impact	Mitigation
+LLM reviewer inconsistent	Medium	Medium	Automated checks first; LLM only for coherence
+LLM API latency	Medium	Low	Timeout + fallback to automated-only
+Review queue backlog	Low	Medium	Batch processing; auto-approve high-confidence
+Commit race conditions	Low	High	File locking; queue serialization
+Usage tracking overhead	Low	Low	Async logging; batch updates
+False duplicate detection	Medium	Medium	Tunable thresholds; human review for borderline
+
+14. Success Metrics
+14.1 Functional Metrics
+Metric	Target
+Proposal acceptance rate	>80% (good proposals should pass)
+False rejection rate	<5% (valid proposals incorrectly rejected)
+False approval rate	<2% (bad proposals incorrectly approved)
+Review completion rate	100% (all proposals get a decision)
+14.2 Performance Metrics
+Metric	Target
+Proposal → Decision (p50)	<2s
+Proposal → Decision (p99)	<10s
+Commit latency	<500ms
+Usage logging overhead	<5% of query time
+14.3 Quality Metrics
+Metric	Target
+Duplicate memories prevented	>95%
+Schema violations caught	100%
+Quality issues flagged	>90%
+Baseline protection	100% (all deferred)
+
+End of PRD Phase 2
+Previous: PRD Phase 1 — Core System
+Next: PRD Phase 3 — Conflict Detection
+

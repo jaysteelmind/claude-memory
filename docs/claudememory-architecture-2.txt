@@ -1,0 +1,729 @@
+﻿Architecture Document — Dynamic Markdown Memory for Agent-Based AI (DMM)
+Version: 2.0
+Working name: DMM (Dynamic Markdown Memory)
+Purpose: Replace monolithic instruction files (e.g., claude.md) with a semantic, hierarchical, micro-markdown memory system that an agent can read, search, and write back to throughout a project—while minimizing context usage.
+
+1. Goals
+Primary Goals
+    • Context efficiency: Load only the most relevant memory fragments for a task, plus a guaranteed baseline. 
+    • File-native memory: Memory exists as .md files in the repo (or adjacent workspace), auditable via Git. 
+    • Agent-operable: Claude (or any agent) can read memory rules at launch, retrieve relevant memory, write updates/new memory (with review), deprecate stale memory, and track usage. 
+    • Deterministic-ish assembly: Memory inclusion should be predictable, budgeted, and structured. 
+    • Cold-start resilient: Baseline memories ensure the agent always has critical context, even on first query. 
+Non-Goals (Initially)
+    • Full knowledge graph reasoning 
+    • Heavy ontology systems 
+    • Complex "AI writes everywhere" without guardrails 
+    • Long-term personal memory across repos (can be Phase 2/3) 
+
+2. System Overview
+DMM is composed of:
+    1. Memory Filesystem — markdown micro-files + directory semantics 
+    2. Memory Instruction + Policy Layer — the boot instruction Claude reads 
+    3. Semantic Index — composite embeddings + metadata 
+    4. Baseline Pack — always-included critical memories 
+    5. Retrieval Router — two-stage: directory selection → file selection 
+    6. Context Assembler — token-budgeted compilation into a "Memory Pack" 
+    7. Write-Back Engine — create/update/deprecate with change discipline 
+    8. Reviewer Agent — validates all proposed writes before commit 
+    9. Conflict Detector — dedicated pass for semantic contradiction detection 
+    10. Telemetry + Governance — usage counts, recency, confidence, promotion/demotion 
+    11. Daemon Lifecycle Manager — starts/stops with Claude Code 
+At runtime, the agent never "loads memory." Instead it requests a Memory Pack compiled for the current task, which always includes the Baseline Pack plus task-relevant retrievals.
+
+3. Repository Layout
+3.1 Memory Root
+A conventional structure that encodes meaning:
+.dmm/
+├── BOOT.md                      # Launch instruction (always read first)
+├── policy.md                    # Guardrails + write-back discipline
+├── daemon.config.json           # Daemon lifecycle configuration
+├── index/
+│   ├── manifest.json            # Memory map for cold-start orientation
+│   ├── embeddings.db            # Composite embeddings (sqlite-vss/qdrant/duckdb)
+│   ├── stats.db                 # Usage + lifecycle info
+│   └── conflicts.db             # Detected conflicts awaiting resolution
+├── memory/
+│   ├── baseline/                # ALWAYS included — critical context
+│   ├── global/                  # Stable truths, long-lived conventions
+│   ├── agent/                   # How the agent behaves (tone, rules, workflows)
+│   ├── project/                 # Project-specific decisions, constraints, scope
+│   ├── ephemeral/               # Short-lived findings (expire unless promoted)
+│   └── deprecated/              # Excluded by default
+└── packs/
+    ├── last_pack.md             # Cached compiled pack
+    └── baseline_pack.md         # Pre-compiled baseline (regenerated on baseline/ changes)
+3.2 Directory Semantics (Enforced)
+Directory	Behavior	Retrieval
+baseline/	Critical context that applies to ALL tasks	Always included — never filtered
+global/	Stable truths, long-lived conventions	Included when semantically relevant
+agent/	Behavioral rules, tone, workflows	Included when semantically relevant
+project/	Project-specific decisions, constraints	Included when semantically relevant
+ephemeral/	Short-lived findings	Auto-expire unless promoted; included when relevant
+deprecated/	Archived memories	Excluded unless explicitly requested
+This is critical because directory is the first-stage filter, and baseline/ bypasses filtering entirely.
+
+4. Baseline Pack (Cold-Start Solution)
+4.1 Purpose
+The Baseline Pack solves the cold-start problem: ensuring the agent always has critical context even when it doesn't know what to query for.
+4.2 What Goes in Baseline
+The baseline/ directory contains memories that are:
+    • Always relevant regardless of task type 
+    • Foundational — other memories may depend on these 
+    • Critical constraints — things the agent must never violate 
+    • Identity/role definitions — who the agent is in this context 
+Example baseline contents:
+memory/baseline/
+├── identity.md                  # Who the agent is, core role
+├── hard_constraints.md          # Absolute rules (security, compliance)
+├── project_scope.md             # What this project is/isn't
+├── key_decisions.md             # Foundational architectural decisions
+└── terminology.md               # Critical domain vocabulary
+4.3 Baseline Behavior
+    • Always loaded: Every Memory Pack includes the entire Baseline Pack before any retrieval results. 
+    • Token budget: Baseline has a dedicated budget (default: 800 tokens) separate from retrieval budget. 
+    • Pre-compiled: baseline_pack.md is regenerated whenever baseline/ changes, for fast inclusion. 
+    • Size discipline: Total baseline should stay under 800 tokens. If it grows beyond this, demote less-critical items to global/. 
+4.4 Baseline Assembly Order
+Within the Baseline Pack, files are ordered by:
+    1. identity.md (always first) 
+    2. hard_constraints.md 
+    3. Remaining files alphabetically 
+
+5. Micro-Markdown File Specification
+Each memory file is an atomic unit.
+5.1 File Format
+Each file is Markdown with YAML front-matter:
+---
+id: mem_2026_01_11_001
+tags: [build, constraints, async]
+scope: project
+priority: 0.8
+confidence: stable
+status: active
+created: 2026-01-11
+last_used: 2026-01-11
+usage_count: 0
+supersedes: []                   # IDs of memories this replaces
+related: []                      # IDs of related memories (for conflict detection)
+---
+
+# Constraint: No Background Jobs
+
+We do not use asynchronous background execution in this project. All operations 
+must complete within the request-response cycle. This constraint exists because 
+our deployment environment does not support persistent workers.
+
+## Rationale
+- Deployment target is serverless (Lambda/Cloud Functions)
+- No guaranteed execution after response returns
+- Simpler debugging and error handling
+
+## Alternatives Considered
+- Queue-based async: Rejected due to infrastructure complexity
+- Polling: Acceptable for long operations with client-side polling
+5.2 File Constraints
+Constraint	Value	Rationale
+Target size	300–800 tokens	Large enough for meaningful context + rationale; small enough for efficient retrieval
+Concepts per file	One	Atomic units enable precise retrieval
+Self-contained	Required	Must be insertable without dependencies
+Human-readable	Required	Auditability and manual curation
+5.3 Required Front-Matter Fields
+Field	Type	Required	Description
+id	string	Yes	Unique identifier (format: mem_YYYY_MM_DD_NNN)
+tags	array	Yes	Semantic tags for retrieval and conflict detection
+scope	enum	Yes	baseline, global, agent, project, ephemeral
+priority	float	Yes	0.0–1.0, influences retrieval ranking
+confidence	enum	Yes	experimental, active, stable, deprecated
+status	enum	Yes	active, deprecated
+5.4 Optional Front-Matter Fields
+Field	Type	Description
+created	date	Creation date
+last_used	date	Last retrieval date
+usage_count	int	Times retrieved
+supersedes	array	IDs of memories this replaces
+related	array	IDs of related memories (aids conflict detection)
+expires	date	Auto-deprecation date (for ephemeral)
+
+6. Composite Embedding Strategy
+6.1 The Problem with Body-Only Embeddings
+Short documents (300–800 tokens) can embed too similarly when only the body is considered. Two files about different aspects of "async" might have nearly identical vectors.
+6.2 Composite Embedding Solution
+Each memory is embedded as a single composite unit combining:
+[DIRECTORY] {directory_path}
+[TITLE] {extracted_title}
+[TAGS] {comma_separated_tags}
+[SCOPE] {scope}
+[CONTENT] {body_text}
+Example composite embedding input:
+[DIRECTORY] memory/project/constraints
+[TITLE] Constraint: No Background Jobs
+[TAGS] build, constraints, async, serverless
+[SCOPE] project
+[CONTENT] We do not use asynchronous background execution in this project. 
+All operations must complete within the request-response cycle. This constraint 
+exists because our deployment environment does not support persistent workers...
+6.3 Embedding Storage Schema
+{
+  "id": "mem_2026_01_11_001",
+  "path": "memory/project/constraints/no_background_jobs.md",
+  "directory": "project/constraints",
+  "composite_embedding": [...],
+  "directory_embedding": [...],
+  "tags": ["build", "constraints", "async"],
+  "priority": 0.8,
+  "token_count": 420,
+  "last_indexed": "2026-01-11T14:30:00Z"
+}
+6.4 Why This Works
+    • Directory path provides coarse domain signal 
+    • Title captures the core concept explicitly 
+    • Tags add semantic richness beyond body text 
+    • Scope helps weight appropriately 
+    • Larger body (300–800 tokens) provides enough context for meaningful differentiation 
+
+7. Boot Instruction for Claude (Launch Contract)
+7.1 Boot File
+.dmm/BOOT.md is the only static file loaded initially (or referenced from claude.md).
+BOOT.md responsibilities:
+    • Define what DMM is 
+    • Define how to retrieve memory (CLI contract) 
+    • Define write-back rules and safety constraints 
+    • Define "when to retrieve" triggers 
+    • Define "what to do if memory is missing/uncertain" 
+    • Define token budget policy 
+    • Explain the Baseline Pack guarantee 
+    • Explain the Reviewer Agent requirement for writes 
+7.2 Example BOOT.md
+# DMM Boot Instructions
+
+You have access to a Dynamic Markdown Memory system. This provides you with 
+relevant context for your tasks without loading everything into context.
+
+## What You Always Have
+
+Every Memory Pack includes the **Baseline Pack** — critical context that applies 
+to all tasks. You don't need to query for this; it's always present.
+
+## How to Retrieve Memory
+
+When you need context beyond baseline, request a Memory Pack:
+
+    dmm query "<describe your task or question>" --budget 1200
+
+This returns a compiled pack with:
+- Baseline memories (always included)
+- Retrieved memories (semantically relevant to your query)
+- File paths for traceability
+
+## When to Retrieve
+
+Request a Memory Pack:
+- At task start (after reading baseline, if you need more context)
+- When switching to a different subtopic or domain
+- After encountering a failure or contradiction
+- Before writing final outputs that depend on project rules
+
+## How to Write Memory
+
+**All writes require review.** Propose a write:
+
+    dmm write propose --path "<path>" --content "<content>" --reason "<why>"
+
+The Reviewer Agent will validate and either approve or reject with feedback.
+
+## What to Write
+
+Write memory when:
+- A new durable rule is discovered
+- An architectural decision is made
+- A repeated fix should become a procedure
+- An assumption is corrected
+
+## What NOT to Write
+
+- Transient conversation context
+- Raw logs or debug output
+- Anything sensitive not intended for the repo
+- Anything already covered by existing memory
+
+## Conflict Handling
+
+If you notice contradictory information:
+1. Do not silently choose one interpretation
+2. Flag the conflict: `dmm conflict flag --ids "id1,id2" --description "..."`
+3. The conflict detector will create a conflict record for resolution
+7.3 Claude Launch Flow
+Pattern A: Claude Code Integration (Recommended)
+The DMM daemon starts automatically with Claude Code (see Section 12). Claude Code injects:
+    1. BOOT.md content 
+    2. Pre-compiled baseline_pack.md 
+Claude then queries for additional context as needed.
+Pattern B: Manual/CLI Usage
+# Start daemon manually
+dmm daemon start
+
+# Get initial context
+dmm query "starting new task: implement user authentication" --budget 1200
+
+8. Runtime Architecture
+8.1 Component Overview
+┌─────────────────────────────────────────────────────────────────────┐
+│                         DMM Daemon                                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │   Indexer    │  │  Retrieval   │  │    Context Assembler     │  │
+│  │              │  │   Router     │  │                          │  │
+│  │ - Watch files│  │              │  │ - Baseline Pack (always) │  │
+│  │ - Composite  │  │ - Stage 1:   │  │ - Retrieved memories     │  │
+│  │   embeddings │  │   Directory  │  │ - Token budgeting        │  │
+│  │ - Metadata   │  │ - Stage 2:   │  │ - Citation paths         │  │
+│  └──────────────┘  │   Files      │  └──────────────────────────┘  │
+│                    └──────────────┘                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │  Write-Back  │  │  Reviewer    │  │   Conflict Detector      │  │
+│  │   Engine     │──▶│   Agent     │  │                          │  │
+│  │              │  │              │  │ - Tag overlap analysis   │  │
+│  │ - Propose    │  │ - Validate   │  │ - Semantic similarity    │  │
+│  │ - Queue      │  │ - Approve/   │  │ - Contradiction check    │  │
+│  │ - Apply      │  │   Reject     │  │ - Conflict records       │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+8.2 Component Details
+A) Indexer
+Responsibilities:
+    • Watch .dmm/memory/**/*.md for changes 
+    • Parse title, headings, body, path, front-matter 
+    • Generate composite embeddings (directory + title + tags + scope + body) 
+    • Store vectors, metadata, directory labels, lifecycle fields, usage stats 
+Indexing trigger:
+    • On daemon start (full reindex) 
+    • On file change (incremental) 
+    • On manual dmm reindex 
+B) Retrieval Router (Two-Stage)
+Stage 1: Directory Selection
+    • Embed the task/query 
+    • Rank directories by relevance using directory embeddings 
+    • Consider historical usage patterns for the query type 
+    • Select top-K directories (default: 3) 
+    • Exception: baseline/ is never filtered; deprecated/ is always excluded unless explicitly requested 
+Stage 2: File Selection
+Within selected directories, rank files by:
+    • Composite embedding similarity to query 
+    • Priority score (from front-matter) 
+    • Recency (last_used) 
+    • Usage frequency 
+    • Confidence level (prefer stable > active > experimental) 
+    • Status (exclude deprecated) 
+Return top-N files within token budget.
+C) Context Assembler
+Takes retrieval output and compiles a Memory Pack.
+Assembly order:
+    1. Baseline Pack (always first, from baseline/) 
+    2. Global memories (retrieved) 
+    3. Agent memories (retrieved) 
+    4. Project memories (retrieved) 
+    5. Ephemeral memories (retrieved, if relevant) 
+Memory Pack format:
+# DMM Memory Pack
+Generated: 2026-01-11T14:30:00Z
+Task: "implement user authentication"
+Baseline tokens: 650 | Retrieved tokens: 1180 | Total: 1830
+
+---
+
+## Baseline (Always Included)
+
+### [baseline/identity.md]
+You are a senior software engineer working on Project X...
+
+### [baseline/hard_constraints.md]
+Security requirements: All auth must use bcrypt...
+
+---
+
+## Project Context
+
+### [project/constraints/no_background_jobs.md]
+We do not use asynchronous background execution...
+
+### [project/auth/session_strategy.md]
+Sessions use JWT tokens stored in httpOnly cookies...
+
+---
+
+## Relevant Standards
+
+### [global/security/password_hashing.md]
+Always use bcrypt with cost factor 12...
+Assembly rules:
+    • Hard token cap (configurable, default: 2000) 
+    • Baseline budget: 800 tokens (separate from retrieval budget) 
+    • Retrieval budget: remaining tokens 
+    • Deduplicate overlapping memories 
+    • Provide file paths for traceability 
+D) Write-Back Engine
+Supported operations:
+    • propose_memory(path, content, metadata, reason) → queues for review 
+    • update_memory(path, patch, reason) → queues for review 
+    • deprecate_memory(path, reason) → queues for review 
+    • promote_memory(path, new_scope) → queues for review 
+    • log_usage(paths, context) → immediate (no review needed) 
+Write discipline:
+    • All mutations queue for Reviewer Agent approval 
+    • No uncontrolled edits to many files 
+    • Prefer creating new micro-file, then optionally deprecating older 
+    • Every write includes a reason field explaining why 
+E) Reviewer Agent
+Purpose: Validate all proposed writes before they're committed. This prevents memory drift and ensures quality.
+Reviewer Agent is a separate Claude invocation with a specific system prompt focused on memory validation.
+Validation checks:
+Check	Failure Action
+Schema compliance	Reject with specific errors
+Token count (300–800)	Reject if outside range
+Single concept	Reject if multiple concepts detected
+Semantic coherence	Reject if content doesn't match tags/title
+Duplication check	Reject if highly similar memory exists
+Conflict check	Flag potential conflicts, may still approve
+Scope appropriateness	Suggest scope change if misaligned
+Baseline promotion	Require explicit justification
+Reviewer flow:
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Proposing  │────▶│  Reviewer   │────▶│   Result    │
+│   Agent     │     │   Agent     │     │             │
+│             │     │             │     │ - Approved  │
+│ dmm write   │     │ - Validate  │     │ - Rejected  │
+│   propose   │     │ - Check     │     │ - Modified  │
+│             │     │ - Decide    │     │             │
+└─────────────┘     └─────────────┘     └─────────────┘
+Reviewer Agent system prompt (excerpt):
+You are a Memory Reviewer for the DMM system. Your job is to validate 
+proposed memory writes before they are committed.
+
+For each proposal, check:
+1. Does it follow the schema? (required fields, valid values)
+2. Is it 300-800 tokens? (reject if outside range)
+3. Does it contain exactly ONE concept? (reject if multiple)
+4. Does the content match the tags and title?
+5. Is there already a memory covering this? (check for duplicates)
+6. Does it conflict with existing memories? (flag, but may approve)
+7. Is the scope appropriate?
+
+Respond with:
+- APPROVED: The write is valid and should be committed
+- REJECTED: The write has issues (list them)
+- MODIFIED: The write is approved with suggested changes (provide them)
+F) Conflict Detector
+Purpose: Proactively identify memories that contradict each other.
+When it runs:
+    • After every approved write (incremental check against related memories) 
+    • On manual trigger (dmm conflicts scan) 
+    • Periodically (configurable, default: daily) 
+Detection methods:
+    1. Tag overlap analysis: Group memories by shared tags. Within groups, check for potential contradictions.
+    2. Semantic similarity clustering: Find memories with high embedding similarity. High similarity + different conclusions = potential conflict.
+    3. Explicit relation checking: Check memories listed in related field against each other.
+    4. Rule extraction: For constraint-type memories, extract the rule and check for logical contradictions.
+Conflict detection heuristics:
+Signal	Weight	Example
+Same tags + opposite keywords	High	"always use X" vs "never use X"
+High similarity + different conclusions	High	Two memories about auth with different approaches
+Same supersedes target	Medium	Two memories claiming to supersede the same memory
+Related field mismatch	Medium	A says related to B, but B contradicts A
+Conflict record schema:
+conflict_id: conflict_2026_01_11_001
+detected: 2026-01-11T14:30:00Z
+memories:
+  - id: mem_2026_01_01_042
+    path: project/auth/session_jwt.md
+    summary: "Use JWT for sessions"
+  - id: mem_2026_01_08_017
+    path: project/auth/session_cookie.md
+    summary: "Use server-side sessions with cookies"
+type: contradictory_approaches
+confidence: 0.85
+description: "Both memories address session management but recommend incompatible approaches"
+status: unresolved
+suggested_resolution: "Determine which approach is current, deprecate the other"
+Conflict resolution workflow:
+    1. Conflict detected → record created in conflicts.db 
+    2. Agent or human reviews conflict 
+    3. Resolution options: 
+        ◦ Deprecate one memory (loser) 
+        ◦ Merge into single memory 
+        ◦ Clarify scopes (both valid in different contexts) 
+        ◦ Flag as intentional (e.g., migration in progress) 
+    4. Resolution applied → conflict marked resolved 
+
+9. Required Interfaces (CLI)
+9.1 Query
+# Basic query
+dmm query "<task or question>" --budget 1200
+
+# Query with scope filter
+dmm query "<task>" --budget 1200 --scope project
+
+# Query excluding ephemeral
+dmm query "<task>" --budget 1200 --exclude-ephemeral
+Returns:
+    • pack.md — compiled Memory Pack 
+    • List of file paths included 
+    • Token counts (baseline + retrieved) 
+    • Relevance scores (optional, with --verbose) 
+9.2 Write-Back
+# Propose new memory (queued for review)
+dmm write propose \
+  --path ".dmm/memory/project/constraints/no_orms.md" \
+  --reason "Discovered during debugging that ORMs cause issues with our schema" \
+  --content "$(cat new_memory.md)"
+
+# Propose update (queued for review)
+dmm write update \
+  --path ".dmm/memory/project/auth/session_strategy.md" \
+  --patch "Change JWT expiry from 24h to 1h" \
+  --reason "Security audit requirement"
+
+# Propose deprecation (queued for review)
+dmm write deprecate \
+  --path ".dmm/memory/project/old_api_pattern.md" \
+  --reason "Superseded by new_api_pattern.md"
+
+# Promote ephemeral to project scope (queued for review)
+dmm write promote \
+  --path ".dmm/memory/ephemeral/useful_finding.md" \
+  --new-scope project \
+  --reason "This has been useful across multiple tasks"
+9.3 Review Queue
+# List pending proposals
+dmm review list
+
+# Review specific proposal (triggers Reviewer Agent)
+dmm review process --id proposal_001
+
+# Review all pending (batch)
+dmm review process-all
+
+# Manual approve (bypass Reviewer Agent — use sparingly)
+dmm review approve --id proposal_001 --bypass-reviewer
+
+# Manual reject
+dmm review reject --id proposal_001 --reason "Duplicate of existing memory"
+9.4 Conflict Management
+# Scan for conflicts
+dmm conflicts scan
+
+# List unresolved conflicts
+dmm conflicts list
+
+# View conflict details
+dmm conflicts show --id conflict_001
+
+# Flag a conflict manually
+dmm conflicts flag --ids "mem_001,mem_002" --description "These contradict on X"
+
+# Resolve a conflict
+dmm conflicts resolve --id conflict_001 --action deprecate --target mem_001 --reason "Outdated"
+9.5 Maintenance
+# Full reindex
+dmm reindex
+
+# Validate all memories (schema, size, duplicates)
+dmm validate
+
+# System health check
+dmm status
+
+# Daemon control
+dmm daemon start
+dmm daemon stop
+dmm daemon status
+
+10. Agent Behavior Rules
+These rules exist in .dmm/policy.md and are summarized in BOOT.
+10.1 When to Retrieve Memory
+Retrieve a Memory Pack:
+    • At task start (after reading baseline, if more context needed) 
+    • When switching subtopic/domain 
+    • After a failure or contradiction 
+    • Before writing final outputs that depend on project rules 
+10.2 When to Write Memory
+Propose a write when:
+    • A new durable rule is discovered 
+    • A decision is made (architecture, naming, constraints) 
+    • A repeated fix occurs (turn it into a procedure) 
+    • An assumption is corrected 
+10.3 What NOT to Write
+    • Transient chat context 
+    • Raw logs (store elsewhere) 
+    • Anything sensitive not intended for repo 
+    • One-off solutions unlikely to recur 
+10.4 Conflict Handling
+If two memories conflict:
+    • Do NOT silently choose one 
+    • Flag the conflict via dmm conflicts flag 
+    • Continue with the more recent or higher-confidence memory 
+    • Note the conflict in your response to the user 
+
+11. Data Stores
+Minimal MVP
+Store	Purpose	Technology
+Embeddings	Composite vectors	sqlite-vss or DuckDB
+Metadata	File info, lifecycle	SQLite
+Stats	Usage tracking	SQLite
+Conflicts	Conflict records	SQLite
+Review Queue	Pending proposals	SQLite
+Scalable (Future)
+    • Qdrant / LanceDB / Chroma for vectors 
+    • PostgreSQL for metadata 
+    • Optional remote vector store 
+MVP should be local-first and single-database if possible.
+
+12. Daemon Lifecycle Management
+12.1 Design Principle
+The DMM daemon should start when Claude Code starts and stop when Claude Code stops. This ensures:
+    • Memory system is always available when needed 
+    • No orphan processes 
+    • No manual daemon management required 
+12.2 Integration Methods
+Method A: Claude Code Extension/Plugin
+If Claude Code supports extensions:
+    • DMM registers as an extension 
+    • Extension lifecycle hooks start/stop daemon 
+    • Cleanest integration 
+Method B: Wrapper Script
+#!/bin/bash
+# claude-code-with-dmm.sh
+
+# Start DMM daemon
+dmm daemon start --background --pid-file /tmp/dmm.pid
+
+# Run Claude Code
+claude-code "$@"
+
+# Stop DMM daemon on exit
+dmm daemon stop --pid-file /tmp/dmm.pid
+Method C: Process Supervisor
+Use a process supervisor that manages both:
+# supervisor.yaml
+processes:
+  - name: dmm-daemon
+    command: dmm daemon run
+    depends_on: []
+    
+  - name: claude-code
+    command: claude-code
+    depends_on: [dmm-daemon]
+12.3 Daemon Configuration
+.dmm/daemon.config.json:
+{
+  "host": "127.0.0.1",
+  "port": 7433,
+  "auto_start": true,
+  "watch_interval_ms": 1000,
+  "baseline_cache": true,
+  "conflict_scan_interval": "daily",
+  "reviewer_agent": {
+    "enabled": true,
+    "model": "claude-3-sonnet",
+    "auto_approve_threshold": 0.95
+  },
+  "lifecycle": {
+    "attach_to": "claude-code",
+    "graceful_shutdown_timeout_ms": 5000
+  }
+}
+12.4 Health Checks
+The daemon exposes health endpoints:
+# Check if daemon is running
+dmm daemon status
+# Returns: running | stopped | unhealthy
+
+# Detailed health
+dmm daemon health
+# Returns: indexer status, last reindex, pending reviews, unresolved conflicts
+
+13. Security & Safety
+    • Memory directory is explicit allowlist (.dmm/memory/** only) 
+    • Write-back requires Reviewer Agent approval 
+    • All writes logged with timestamp, reason, and proposer 
+    • Enforce max file size (800 tokens) to prevent "giant memory blob" regression 
+    • Git-based audit trail is a feature, not a side effect 
+    • Reviewer Agent runs in isolated context (no access to write directly) 
+
+14. Failure Modes & Mitigations
+Failure	Mitigation
+Too many relevant files	Directory-first routing + strict token budget + diversity selection
+Agent hallucinates memory	BOOT forbids assuming memory exists; Reviewer Agent validates
+Memory gets stale/contradictory	Lifecycle states + usage stats + Conflict Detector + deprecation workflow
+Reviewer Agent fails	Queue persists; manual review fallback; auto-approve disabled
+Daemon crashes	Graceful restart; baseline_pack.md cached on disk; query falls back to baseline-only
+Cold start confusion	Baseline Pack always present; manifest.json provides memory map
+Embedding similarity too high	Composite embeddings with path/tags; larger file sizes (300-800 tokens)
+
+15. MVP Build Plan
+MVP-1 (Core — 2 weeks)
+    • [ ] Define .dmm/BOOT.md and .dmm/policy.md 
+    • [ ] Implement Indexer with composite embeddings 
+    • [ ] Implement Baseline Pack (always-include baseline/) 
+    • [ ] Implement two-stage Retrieval Router 
+    • [ ] Implement Context Assembler with token budgeting 
+    • [ ] Implement basic dmm query CLI 
+    • [ ] Implement dmm daemon start/stop with Claude Code lifecycle hooks 
+Validation:
+    • Baseline always appears in pack 
+    • Retrieved memories are relevant 
+    • Token budget respected 
+MVP-2 (Write-Back + Review — 2 weeks)
+    • [ ] Implement Write-Back Engine (propose, update, deprecate) 
+    • [ ] Implement Reviewer Agent with validation checks 
+    • [ ] Implement review queue (dmm review list/process) 
+    • [ ] Add usage tracking (log_usage) 
+    • [ ] Add promotion/demotion 
+Validation:
+    • Writes require review 
+    • Invalid writes rejected with feedback 
+    • Usage stats updated correctly 
+MVP-3 (Conflict Detection — 1 week)
+    • [ ] Implement Conflict Detector (tag overlap + semantic similarity) 
+    • [ ] Implement conflict records and conflicts.db 
+    • [ ] Implement dmm conflicts CLI commands 
+    • [ ] Add conflict flagging from agent 
+Validation:
+    • Contradictory memories detected 
+    • Conflict records created 
+    • Resolution workflow works 
+MVP-4 (Polish + Multi-Agent Prep — 1 week)
+    • [ ] Add manifest.json generation (memory map for orientation) 
+    • [ ] Add dmm validate for full system check 
+    • [ ] Add dmm status dashboard 
+    • [ ] Document multi-agent considerations for Phase 2 
+
+16. Deliverables
+Deliverable	Description
+.dmm/BOOT.md	Launch instruction Claude reads
+.dmm/policy.md	Guardrails + write-back discipline
+.dmm/daemon.config.json	Daemon configuration
+dmm CLI tool	Query, write, review, conflicts, maintenance
+Reviewer Agent prompt	System prompt for write validation
+Memory Pack format spec	Output format documentation
+Directory structure spec	Semantic meaning of each directory
+Micro-file schema	Front-matter fields and constraints
+Composite embedding spec	How embeddings are constructed
+Conflict detection spec	How contradictions are identified
+
+17. Summary of Changes from v1
+Issue	v1 Approach	v2 Solution
+Cold start problem	No guaranteed context	Baseline Pack always included
+Embedding discrimination	Body-only, 100-400 tokens	Composite embeddings (path+title+tags+body), 300-800 tokens
+Write-back drift	Agent self-validates	Reviewer Agent validates all writes
+Daemon management	Manual or unspecified	Lifecycle tied to Claude Code
+Conflict detection	Manual flagging only	Dedicated Conflict Detector with semantic analysis
+
+18. Open Questions for Implementation
+    1. Reviewer Agent model: Should it be the same model as the main agent, or a smaller/cheaper model? 
+    2. Auto-approve threshold: At what confidence level can the Reviewer Agent auto-approve without human review? 
+    3. Conflict resolution authority: Can agents resolve conflicts, or only humans? 
+    4. Baseline size creep: What's the escalation path when baseline exceeds 800 tokens? 
+    5. Multi-repo memory: How should shared memories across repos work? (Phase 2) 
+
+This document represents v2.0 of the DMM architecture, incorporating solutions for cold-start, embedding quality, write-back governance, daemon lifecycle, and conflict detection.
+

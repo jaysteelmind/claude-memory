@@ -1,0 +1,202 @@
+﻿Project Concept
+Dynamic Markdown Memory (DMM)
+A semantic, agent-addressable memory system built on markdown micro-files
+Replace monolithic claude.md / system.md with semantic memory routing across a structured Markdown knowledge base.
+
+Core Insight
+Large context windows are wasted on irrelevance.
+Instead of:
+    • One giant .md file
+    • Or manual memory curation
+You want:
+    • Micro-markdown files (atomic memory units)
+    • Semantic routing at inference time
+    • Directory-level meaning
+    • Only load what is causally relevant
+This is not RAG.
+This is agent memory architecture.
+
+1. Memory Model: Micro-Markdown Units
+Atomic rule
+Each .md file represents one idea, rule, fact, or procedure.
+Example
+memory/
+├── architecture/
+│   ├── agent_loop.md
+│   ├── validation_rules.md
+│   └── failure_modes.md
+├── coding/
+│   ├── python_style.md
+│   ├── rust_error_handling.md
+│   └── async_patterns.md
+├── project_fullsend/
+│   ├── prd_scope.md
+│   ├── constraints.md
+│   └── naming_conventions.md
+Each file should be:
+    • < ~200–400 tokens
+    • Self-contained
+    • Human-readable
+    • Agent-addressable
+
+2. Directory Semantics (Underrated but Critical)
+Directories are first-class semantic signals, not just storage.
+Each directory represents:
+    • Domain
+    • Scope
+    • Priority tier
+    • Ownership (global vs project vs agent-local)
+You can enforce a semantic contract:
+memory/
+├── global/        # Always relevant truths
+├── agent/         # Behavioral rules
+├── project/       # Project-specific
+├── ephemeral/     # Short-lived context
+└── deprecated/    # Never load unless asked
+This lets you do:
+    • Coarse filtering before embeddings
+    • Context budgeting by directory weight
+
+3. Metadata Front-Matter (Lightweight, Optional)
+Add minimal YAML to each .md file:
+---
+tags: [python, async, performance]
+priority: high
+confidence: stable
+scope: global
+last_used: 2026-01-10
+---
+This enables:
+    • Recency decay
+    • Confidence filtering
+    • Priority scoring
+    • Agent self-curation
+⚠️ Keep this minimal — the text body still matters most.
+
+4. Semantic Indexing Layer (The “Router”)
+This is the brain.
+Index structure
+For each .md:
+    • Embed content
+    • Embed path
+    • Embed title
+    • Optionally embed front-matter tags
+Store as:
+{
+  "path": "memory/coding/python_style.md",
+  "embedding": [...],
+  "directory_vector": [...],
+  "priority": 0.9
+}
+Retrieval flow
+    1. Embed current agent task / question
+    2. Score against:
+        ◦ File content
+        ◦ Directory semantics
+    3. Select:
+        ◦ Top-K directories
+        ◦ Then Top-N files within each
+    4. Hard cap token budget
+This is two-stage retrieval, not naive top-K.
+
+5. Context Assembly Engine (Key Innovation)
+Instead of dumping memory into context:
+Build a Context Plan
+{
+  "selected_dirs": ["project_fullsend", "coding"],
+  "selected_files": [
+    "project_fullsend/constraints.md",
+    "coding/python_style.md"
+  ],
+  "token_budget": 1200
+}
+Then:
+    • Load files in priority order
+    • Stop when budget reached
+    • Preserve ordering (global → local → ephemeral)
+This is how you guarantee context efficiency.
+
+6. Agent-Writable Memory (Self-Updating System)
+Let agents:
+    • Create new .md files
+    • Amend existing ones
+    • Deprecate outdated memory
+Example:
+# NOTE
+This constraint was violated during run 182.
+Updated to reflect new rule.
+You now have:
+    • Learning
+    • Memory evolution
+    • Auditability (git history)
+This is persistent cognition.
+
+7. Memory Decay & Promotion
+Introduce lifecycle states:
+State	Behavior
+Ephemeral	Auto-expire unless referenced
+Active	Frequently loaded
+Stable	Rarely changes
+Deprecated	Excluded unless explicitly requested
+Agents can:
+    • Promote frequently used memory
+    • Demote stale memory
+This keeps the system clean without human babysitting.
+
+8. Claude / Cursor / Agent Integration
+Replace claude.md with:
+memory/
+├── system/
+│   ├── role_definition.md
+│   ├── safety_bounds.md
+│   └── output_style.md
+At runtime:
+    • Agent loads only the files relevant to:
+        ◦ The task
+        ◦ The repo
+        ◦ The language
+        ◦ The phase (design vs code vs debug)
+This scales far better than static instructions.
+
+9. Why This Beats Traditional RAG
+RAG	Dynamic Markdown Memory
+Chunked blobs	Human-authored atomic memory
+Stateless	Persistent & evolving
+Retrieval only	Retrieval + curation
+No hierarchy	Directory semantics
+Black-box	Git-auditable
+This is agent memory, not document search.
+
+10. Optional: Graph Layer (Later)
+Once stable, you can add:
+    • links: between .md files
+    • Dependency edges
+    • Causal relationships
+But this is Phase 2 — don’t overbuild initially.
+
+Suggested MVP Phases
+Phase 1 – Core
+    • Markdown micro-files
+    • Embedding index
+    • Two-stage retrieval
+    • Context budget enforcement
+Phase 2 – Agent Write-Back
+    • Memory creation
+    • Update & deprecation
+    • Usage tracking
+Phase 3 – Multi-Agent
+    • Shared vs private memory
+    • Conflict resolution
+    • Confidence weighting
+
+Naming Ideas
+    • Membrane
+    • RecallFS
+    • MindMap-MD
+    • CortexMD
+    • Ledger
+
+Bottom line
+You’re not designing “better prompts.”
+You’re designing:
+A file-native cognitive memory system for agents
