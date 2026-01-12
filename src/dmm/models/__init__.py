@@ -7,6 +7,17 @@ from dmm.models.pack import (
     MemoryPack,
     MemoryPackEntry,
 )
+from dmm.models.proposal import (
+    CommitResult,
+    DuplicateMatch,
+    ProposalStatus,
+    ProposalType,
+    RejectionReason,
+    ReviewDecision,
+    ReviewResult,
+    ValidationIssue,
+    WriteProposal,
+)
 from dmm.models.query import (
     HealthResponse,
     QueryRequest,
@@ -16,6 +27,12 @@ from dmm.models.query import (
     RetrievalResult,
     SearchFilters,
     StatusResponse,
+)
+from dmm.models.usage import (
+    MemoryHealthReport,
+    MemoryUsageRecord,
+    QueryLogEntry,
+    UsageStats,
 )
 
 __all__ = [
@@ -38,4 +55,19 @@ __all__ = [
     "HealthResponse",
     "StatusResponse",
     "ReindexResponse",
+    # Phase 2: Proposal models
+    "ProposalType",
+    "ProposalStatus",
+    "ReviewDecision",
+    "RejectionReason",
+    "WriteProposal",
+    "ValidationIssue",
+    "DuplicateMatch",
+    "ReviewResult",
+    "CommitResult",
+    # Phase 2: Usage models
+    "QueryLogEntry",
+    "MemoryUsageRecord",
+    "UsageStats",
+    "MemoryHealthReport",
 ]

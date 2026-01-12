@@ -22,6 +22,9 @@ from dmm.core.constants import (
     get_memory_root,
 )
 from dmm.daemon.health import HealthChecker
+from dmm.daemon.routes.review import router as review_router
+from dmm.daemon.routes.usage import router as usage_router
+from dmm.daemon.routes.write import router as write_router
 from dmm.indexer.indexer import Indexer
 from dmm.retrieval.assembler import ContextAssembler
 from dmm.retrieval.baseline import BaselineManager

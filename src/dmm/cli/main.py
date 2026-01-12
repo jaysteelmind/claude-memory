@@ -11,6 +11,9 @@ from rich.table import Table
 
 from dmm.cli.daemon import daemon_app
 from dmm.cli.query import query_command
+from dmm.cli.review import app as review_app
+from dmm.cli.usage import app as usage_app
+from dmm.cli.write import app as write_app
 from dmm.core.constants import DEFAULT_HOST, DEFAULT_PORT, get_memory_root
 
 console = Console()
@@ -26,6 +29,11 @@ app = typer.Typer(
 # Add subcommands
 app.add_typer(daemon_app, name="daemon")
 app.command("query")(query_command)
+
+# Phase 2: Write-back commands
+app.add_typer(write_app, name="write")
+app.add_typer(review_app, name="review")
+app.add_typer(usage_app, name="usage")
 
 
 @app.command("status")
@@ -228,7 +236,25 @@ def init_command(
     config = DMMConfig()
     config.save()
 
-    # Create BOOT.md
+    # Initialize Phase 2 databases
+    from dmm.writeback.queue import ReviewQueue
+    from dmm.writeback.usage import UsageTracker
+    from dmm.writeback.conflicts import initialize_conflicts_db
+    
+    # Review queue
+    queue = ReviewQueue(dmm_root.parent)
+    queue.initialize()
+    queue.close()
+    
+    # Usage tracker
+    tracker = UsageTracker(dmm_root.parent)
+    tracker.initialize()
+    tracker.close()
+    
+    # Conflicts database (Phase 3 preparation)
+    initialize_conflicts_db(dmm_root.parent)
+
+    # Create BOOT.md with Phase 2 updates
     boot_content = """# DMM Boot Instructions
 
 You have access to a Dynamic Markdown Memory (DMM) system that provides
@@ -245,6 +271,32 @@ When you need context beyond baseline, request a Memory Pack:
 
     dmm query "<describe your task or question>" --budget 1200
 
+## How to Write Memory (Phase 2)
+
+To propose a new memory:
+
+    dmm write propose <path> --file <content.md> --reason "why this memory"
+
+To update an existing memory:
+
+    dmm write update <memory_id> --file <content.md> --reason "update reason"
+
+To deprecate a memory:
+
+    dmm write deprecate <memory_id> --reason "deprecation reason"
+
+To promote a memory to a different scope:
+
+    dmm write promote <memory_id> --scope global --reason "promotion reason"
+
+## Review Process
+
+All write proposals go through review:
+
+    dmm review list           # See pending proposals
+    dmm review process <id>   # Review a proposal
+    dmm review batch          # Review all pending
+
 ## When to Retrieve
 
 Request a Memory Pack:
@@ -253,14 +305,26 @@ Request a Memory Pack:
 - After encountering a failure or contradiction
 - Before producing final deliverables
 
-## Current Limitations (Phase 1)
+## When to Write
 
-In this phase, you can only read memories. Writing, updating, and
-deprecating memories will be available in Phase 2.
+Propose a new memory when:
+- You discover a project constraint or decision
+- A pattern emerges that should be documented
+- You find information that would help future tasks
+- Temporary findings need to be preserved (ephemeral)
+
+## Memory Quality Guidelines
+
+Good memories are:
+- **Atomic**: One concept per file (300-800 tokens)
+- **Self-contained**: No undefined references
+- **Actionable**: Clear what to do with the information
+- **Justified**: Include rationale for decisions
+- **Appropriately scoped**: baseline < global < project < ephemeral
 """
     (dmm_root / "BOOT.md").write_text(boot_content)
 
-    # Create policy.md
+    # Create policy.md with Phase 2 updates
     policy_content = """# DMM Policy
 
 ## Memory Retrieval Policy
@@ -287,12 +351,40 @@ Baseline always uses 800 tokens (reserved).
 
 | Scope | Meaning |
 |-------|---------|
-| baseline | Critical, always-relevant |
+| baseline | Critical, always-relevant (human review required) |
 | global | Stable, cross-project truths |
 | agent | Behavioral rules for the agent |
 | project | Project-specific context |
-| ephemeral | Temporary findings |
-| deprecated | Outdated memories |
+| ephemeral | Temporary findings (auto-expire) |
+| deprecated | Outdated memories (excluded by default) |
+
+## Write Policy (Phase 2)
+
+### What to Write
+- Architectural decisions with rationale
+- Project constraints and their reasons
+- Behavioral guidelines for the agent
+- Patterns discovered during development
+- Temporary findings (as ephemeral)
+
+### What NOT to Write
+- Transient chat context
+- Raw logs (store elsewhere)
+- Sensitive information not intended for repo
+- One-off solutions unlikely to recur
+
+### Review Requirements
+- All writes require review before commit
+- Baseline modifications always require human review
+- Auto-approve threshold: 95% confidence
+- Rejected proposals include actionable feedback
+
+### Conflict Handling
+If two memories conflict:
+- Do NOT silently choose one
+- Flag the conflict for review
+- Continue with the more recent or higher-confidence memory
+- Note the conflict in your response to the user
 """
     (dmm_root / "policy.md").write_text(policy_content)
 
@@ -318,7 +410,7 @@ documented in the memory system.
 - Follow project conventions
 - Respect documented constraints
 - Query memory when context is needed
-- Suggest memory updates when new patterns emerge
+- Propose memory updates when new patterns emerge
 """
     (dmm_root / "memory" / "baseline" / "identity.md").write_text(example_identity)
 
@@ -328,6 +420,7 @@ documented in the memory system.
     console.print("  1. Add baseline memories to .dmm/memory/baseline/")
     console.print("  2. Start the daemon: dmm daemon start")
     console.print("  3. Query memory: dmm query 'your task'")
+    console.print("  4. Propose new memory: dmm write propose <path> --file <file> --reason 'reason'")
 
 
 @app.command("dirs")

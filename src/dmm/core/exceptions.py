@@ -228,3 +228,124 @@ class WatcherError(DMMError):
     """Raised when file watcher encounters an error."""
 
     pass
+
+
+# =============================================================================
+# Phase 2: Write-Back Engine Exceptions
+# =============================================================================
+
+
+class WriteBackError(DMMError):
+    """Base exception for write-back operations."""
+
+    pass
+
+
+class ProposalError(WriteBackError):
+    """Raised when a write proposal is invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        proposal_id: str | None = None,
+        reason: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if proposal_id:
+            details["proposal_id"] = proposal_id
+        if reason:
+            details["reason"] = reason
+        super().__init__(message, details)
+        self.proposal_id = proposal_id
+        self.reason = reason
+
+
+class DuplicateMemoryError(WriteBackError):
+    """Raised when a duplicate memory is detected."""
+
+    def __init__(
+        self,
+        message: str,
+        proposed_path: str | None = None,
+        existing_id: str | None = None,
+        similarity: float | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if proposed_path:
+            details["proposed_path"] = proposed_path
+        if existing_id:
+            details["existing_id"] = existing_id
+        if similarity is not None:
+            details["similarity"] = similarity
+        super().__init__(message, details)
+        self.proposed_path = proposed_path
+        self.existing_id = existing_id
+        self.similarity = similarity
+
+
+class ReviewError(WriteBackError):
+    """Raised when review process fails."""
+
+    def __init__(
+        self,
+        message: str,
+        proposal_id: str | None = None,
+        stage: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if proposal_id:
+            details["proposal_id"] = proposal_id
+        if stage:
+            details["stage"] = stage
+        super().__init__(message, details)
+        self.proposal_id = proposal_id
+        self.stage = stage
+
+
+class CommitError(WriteBackError):
+    """Raised when commit operation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        proposal_id: str | None = None,
+        path: str | None = None,
+        rollback_success: bool | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if proposal_id:
+            details["proposal_id"] = proposal_id
+        if path:
+            details["path"] = path
+        if rollback_success is not None:
+            details["rollback_success"] = rollback_success
+        super().__init__(message, details)
+        self.proposal_id = proposal_id
+        self.path = path
+        self.rollback_success = rollback_success
+
+
+class QueueError(WriteBackError):
+    """Raised when review queue operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if operation:
+            details["operation"] = operation
+        super().__init__(message, details)
+        self.operation = operation
+
+
+class UsageTrackingError(DMMError):
+    """Raised when usage tracking operations fail."""
+
+    pass

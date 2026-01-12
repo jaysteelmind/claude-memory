@@ -140,3 +140,52 @@ def get_embeddings_db_path(base_path: Path | None = None) -> Path:
 def get_stats_db_path(base_path: Path | None = None) -> Path:
     """Get the stats database path."""
     return get_index_root(base_path) / STATS_DB
+
+
+# =============================================================================
+# Phase 2: Write-Back Engine Constants
+# =============================================================================
+
+# Proposal settings
+PROPOSAL_ID_PREFIX: Final[str] = "prop"
+PROPOSAL_ID_FORMAT: Final[str] = "prop_{timestamp}_{random}"
+
+# Review queue database
+REVIEW_QUEUE_DB: Final[str] = "review_queue.db"
+
+# Usage tracking database  
+USAGE_DB: Final[str] = "usage.db"
+
+# Duplicate detection thresholds
+DUPLICATE_EXACT_THRESHOLD: Final[float] = 0.99
+DUPLICATE_SEMANTIC_THRESHOLD: Final[float] = 0.85
+DUPLICATE_WARNING_THRESHOLD: Final[float] = 0.70
+
+# Review settings
+AUTO_APPROVE_CONFIDENCE_THRESHOLD: Final[float] = 0.95
+REVIEW_TIMEOUT_SECONDS: Final[int] = 30
+MAX_REVIEW_RETRIES: Final[int] = 3
+
+# Quality check settings
+QUALITY_MIN_TAGS: Final[int] = 1
+QUALITY_MAX_TAGS: Final[int] = 10
+QUALITY_MIN_BODY_LENGTH: Final[int] = 50
+QUALITY_MAX_TITLE_LENGTH: Final[int] = 100
+
+# Commit settings
+COMMIT_BACKUP_ENABLED: Final[bool] = True
+COMMIT_REINDEX_TIMEOUT_SECONDS: Final[int] = 30
+
+# Usage tracking settings
+USAGE_BATCH_SIZE: Final[int] = 100
+USAGE_FLUSH_INTERVAL_SECONDS: Final[int] = 60
+
+
+def get_review_queue_db_path(base_path: Path | None = None) -> Path:
+    """Get the review queue database path."""
+    return get_index_root(base_path) / REVIEW_QUEUE_DB
+
+
+def get_usage_db_path(base_path: Path | None = None) -> Path:
+    """Get the usage tracking database path."""
+    return get_index_root(base_path) / USAGE_DB
