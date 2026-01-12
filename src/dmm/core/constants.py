@@ -1,0 +1,142 @@
+"""DMM system constants and default values."""
+
+from enum import Enum
+from pathlib import Path
+from typing import Final
+
+
+class Scope(str, Enum):
+    """Memory scope categories with semantic meaning."""
+    
+    BASELINE = "baseline"
+    GLOBAL = "global"
+    AGENT = "agent"
+    PROJECT = "project"
+    EPHEMERAL = "ephemeral"
+
+
+class Confidence(str, Enum):
+    """Memory confidence levels indicating stability."""
+    
+    EXPERIMENTAL = "experimental"
+    ACTIVE = "active"
+    STABLE = "stable"
+    DEPRECATED = "deprecated"
+
+
+class Status(str, Enum):
+    """Memory status for lifecycle management."""
+    
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+
+# Directory structure
+DMM_ROOT_DIR: Final[str] = ".dmm"
+MEMORY_DIR: Final[str] = "memory"
+INDEX_DIR: Final[str] = "index"
+PACKS_DIR: Final[str] = "packs"
+
+# Database files
+EMBEDDINGS_DB: Final[str] = "embeddings.db"
+STATS_DB: Final[str] = "stats.db"
+
+# Pack files
+BASELINE_PACK_FILE: Final[str] = "baseline_pack.md"
+LAST_PACK_FILE: Final[str] = "last_pack.md"
+
+# Token budgets
+DEFAULT_TOTAL_BUDGET: Final[int] = 2000
+DEFAULT_BASELINE_BUDGET: Final[int] = 800
+MIN_MEMORY_TOKENS: Final[int] = 300
+MAX_MEMORY_TOKENS: Final[int] = 800
+MAX_MEMORY_TOKENS_HARD: Final[int] = 2000
+
+# Retrieval settings
+DEFAULT_TOP_K_DIRECTORIES: Final[int] = 3
+DEFAULT_MAX_CANDIDATES: Final[int] = 50
+DEFAULT_DIVERSITY_THRESHOLD: Final[float] = 0.9
+
+# Ranking weights
+SIMILARITY_WEIGHT: Final[float] = 0.6
+PRIORITY_WEIGHT: Final[float] = 0.25
+CONFIDENCE_WEIGHT: Final[float] = 0.15
+
+# Confidence scores for ranking
+CONFIDENCE_SCORES: Final[dict[Confidence, float]] = {
+    Confidence.STABLE: 1.0,
+    Confidence.ACTIVE: 0.8,
+    Confidence.EXPERIMENTAL: 0.5,
+    Confidence.DEPRECATED: 0.0,
+}
+
+# Embedding model
+EMBEDDING_MODEL: Final[str] = "all-MiniLM-L6-v2"
+EMBEDDING_DIMENSION: Final[int] = 384
+
+# Daemon settings
+DEFAULT_HOST: Final[str] = "127.0.0.1"
+DEFAULT_PORT: Final[int] = 7433
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT: Final[float] = 5.0
+
+# File watcher settings
+DEFAULT_DEBOUNCE_MS: Final[int] = 100
+DEFAULT_WATCH_INTERVAL_MS: Final[int] = 1000
+
+# Memory file settings
+MEMORY_FILE_EXTENSION: Final[str] = ".md"
+MEMORY_ID_PREFIX: Final[str] = "mem"
+MEMORY_ID_FORMAT: Final[str] = "mem_{date}_{sequence:03d}"
+
+# Required frontmatter fields
+REQUIRED_FRONTMATTER_FIELDS: Final[tuple[str, ...]] = (
+    "id",
+    "tags",
+    "scope",
+    "priority",
+    "confidence",
+    "status",
+)
+
+# Optional frontmatter fields
+OPTIONAL_FRONTMATTER_FIELDS: Final[tuple[str, ...]] = (
+    "created",
+    "last_used",
+    "usage_count",
+    "supersedes",
+    "related",
+    "expires",
+)
+
+# Baseline file ordering (priority files first)
+BASELINE_PRIORITY_FILES: Final[tuple[str, ...]] = (
+    "identity.md",
+    "hard_constraints.md",
+)
+
+
+def get_dmm_root(base_path: Path | None = None) -> Path:
+    """Get the .dmm root directory path."""
+    if base_path is None:
+        base_path = Path.cwd()
+    return base_path / DMM_ROOT_DIR
+
+
+def get_memory_root(base_path: Path | None = None) -> Path:
+    """Get the memory directory path."""
+    return get_dmm_root(base_path) / MEMORY_DIR
+
+
+def get_index_root(base_path: Path | None = None) -> Path:
+    """Get the index directory path."""
+    return get_dmm_root(base_path) / INDEX_DIR
+
+
+def get_embeddings_db_path(base_path: Path | None = None) -> Path:
+    """Get the embeddings database path."""
+    return get_index_root(base_path) / EMBEDDINGS_DB
+
+
+def get_stats_db_path(base_path: Path | None = None) -> Path:
+    """Get the stats database path."""
+    return get_index_root(base_path) / STATS_DB

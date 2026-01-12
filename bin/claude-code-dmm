@@ -1,0 +1,74 @@
+#!/bin/bash
+# claude-code-dmm - Wrapper script to run Claude Code with DMM daemon
+#
+# Usage: claude-code-dmm [claude-code-args...]
+#
+# This script starts the DMM daemon before launching Claude Code
+# and stops it when Claude Code exits.
+
+set -e
+
+# Configuration
+DMM_PID_FILE="${DMM_PID_FILE:-/tmp/dmm-$$.pid}"
+DMM_HOST="${DMM_HOST:-127.0.0.1}"
+DMM_PORT="${DMM_PORT:-7433}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Cleanup function
+cleanup() {
+    if [ -f "$DMM_PID_FILE" ]; then
+        echo -e "${YELLOW}Stopping DMM daemon...${NC}"
+        dmm daemon stop --pid-file "$DMM_PID_FILE" 2>/dev/null || true
+    fi
+}
+
+# Set trap for cleanup on exit
+trap cleanup EXIT INT TERM
+
+# Check if dmm is available
+if ! command -v dmm &> /dev/null; then
+    echo -e "${RED}Error: dmm command not found${NC}"
+    echo "Please install DMM: pip install dmm or poetry install"
+    exit 1
+fi
+
+# Check if .dmm directory exists
+if [ ! -d ".dmm" ]; then
+    echo -e "${YELLOW}No .dmm directory found. Initializing...${NC}"
+    dmm init
+fi
+
+# Start DMM daemon
+echo -e "${GREEN}Starting DMM daemon...${NC}"
+dmm daemon start --pid-file "$DMM_PID_FILE" --host "$DMM_HOST" --port "$DMM_PORT"
+
+# Wait for daemon to be ready
+for i in {1..10}; do
+    if curl -s "http://${DMM_HOST}:${DMM_PORT}/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}DMM daemon ready${NC}"
+        break
+    fi
+    sleep 0.5
+done
+
+# Run Claude Code with all arguments
+echo -e "${GREEN}Starting Claude Code...${NC}"
+if command -v claude-code &> /dev/null; then
+    claude-code "$@"
+elif command -v claude &> /dev/null; then
+    claude "$@"
+else
+    echo -e "${YELLOW}Claude Code not found. Running in standalone mode.${NC}"
+    echo "DMM daemon is running at http://${DMM_HOST}:${DMM_PORT}"
+    echo "Press Ctrl+C to stop."
+    
+    # Wait indefinitely until interrupted
+    while true; do
+        sleep 1
+    done
+fi

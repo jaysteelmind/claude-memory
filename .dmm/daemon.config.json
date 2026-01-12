@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "daemon": {
+    "host": "127.0.0.1",
+    "port": 7433,
+    "auto_start": true,
+    "graceful_shutdown_timeout_ms": 5000,
+    "log_level": "info"
+  },
+  "indexer": {
+    "watch_interval_ms": 1000,
+    "debounce_ms": 100,
+    "embedding_model": "all-MiniLM-L6-v2",
+    "batch_size": 50
+  },
+  "retrieval": {
+    "top_k_directories": 3,
+    "max_candidates": 50,
+    "diversity_threshold": 0.9,
+    "default_budget": 2000,
+    "baseline_budget": 800
+  },
+  "storage": {
+    "embeddings_db": "index/embeddings.db",
+    "stats_db": "index/stats.db"
+  },
+  "validation": {
+    "min_tokens": 300,
+    "max_tokens": 800,
+    "warn_on_missing_optional": true
+  }
+}

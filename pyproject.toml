@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "dmm"
+version = "0.1.0"
+description = "Dynamic Markdown Memory for AI Agents"
+authors = ["DMM Team"]
+readme = "README.md"
+packages = [{include = "dmm", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
+sentence-transformers = "^3.3.0"
+sqlite-vss = "^0.1.2"
+watchdog = "^6.0.0"
+typer = {extras = ["all"], version = "^0.15.0"}
+rich = "^13.9.0"
+tiktoken = "^0.8.0"
+pyyaml = "^6.0.2"
+python-frontmatter = "^1.1.0"
+aiosqlite = "^0.20.0"
+numpy = "^1.26.0"
+httpx = "^0.28.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+ruff = "^0.8.0"
+
+[tool.poetry.scripts]
+dmm = "dmm.cli.main:app"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
