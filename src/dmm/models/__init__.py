@@ -1,5 +1,4 @@
 """DMM data models."""
-
 from dmm.models.memory import DirectoryInfo, IndexedMemory, MemoryFile
 from dmm.models.pack import (
     BaselinePack,
@@ -33,6 +32,21 @@ from dmm.models.usage import (
     MemoryUsageRecord,
     QueryLogEntry,
     UsageStats,
+)
+from dmm.models.conflict import (
+    Conflict,
+    ConflictCandidate,
+    ConflictMemory,
+    ConflictStats,
+    ConflictStatus,
+    ConflictType,
+    DetectionMethod,
+    MergeResult,
+    ResolutionAction,
+    ResolutionRequest,
+    ResolutionResult,
+    ScanRequest,
+    ScanResult,
 )
 
 __all__ = [
@@ -70,4 +84,18 @@ __all__ = [
     "MemoryUsageRecord",
     "UsageStats",
     "MemoryHealthReport",
+    # Phase 3: Conflict models
+    "ConflictType",
+    "ConflictStatus",
+    "ResolutionAction",
+    "DetectionMethod",
+    "ConflictMemory",
+    "Conflict",
+    "ConflictCandidate",
+    "ScanRequest",
+    "ScanResult",
+    "ResolutionRequest",
+    "ResolutionResult",
+    "ConflictStats",
+    "MergeResult",
 ]

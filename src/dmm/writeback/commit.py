@@ -1,6 +1,7 @@
 """Commit engine for atomically applying approved proposals."""
 
 import asyncio
+import logging
 import os
 import shutil
 import time
@@ -26,7 +27,11 @@ from dmm.models.proposal import (
 from dmm.writeback.queue import ReviewQueue
 
 if TYPE_CHECKING:
+    from dmm.conflicts.scanner import ConflictScanner
     from dmm.indexer.indexer import Indexer
+
+
+logger = logging.getLogger(__name__)
 
 
 class CommitEngine:
@@ -38,6 +43,7 @@ class CommitEngine:
         indexer: "Indexer",
         base_path: Path | None = None,
         backup_enabled: bool = True,
+        conflict_scanner: "ConflictScanner | None" = None,
     ) -> None:
         """Initialize the commit engine.
         
@@ -46,6 +52,7 @@ class CommitEngine:
             indexer: The memory indexer for reindexing.
             base_path: Base path for the DMM directory.
             backup_enabled: Whether to create backups before modifications.
+            conflict_scanner: Optional conflict scanner for post-commit scans.
         """
         self._queue = queue
         self._indexer = indexer
@@ -53,6 +60,7 @@ class CommitEngine:
         self._memory_root = get_memory_root(self._base_path)
         self._backup_enabled = backup_enabled
         self._backup_dir = self._memory_root.parent / "backups"
+        self._conflict_scanner = conflict_scanner
 
     def commit(self, proposal: WriteProposal) -> CommitResult:
         """Commit an approved proposal.
@@ -137,6 +145,26 @@ class CommitEngine:
                 rollback_success=rollback_success,
                 commit_duration_ms=(time.perf_counter() - start_time) * 1000,
             )
+
+    def _trigger_conflict_scan(self, memory_id: str | None) -> None:
+        """Trigger incremental conflict scan after successful commit.
+        
+        Args:
+            memory_id: The memory ID to scan for conflicts.
+        """
+        if not self._conflict_scanner or not memory_id:
+            return
+        
+        try:
+            scan_result = self._conflict_scanner.trigger_incremental_scan_sync(memory_id)
+            if scan_result.conflicts_new > 0:
+                logger.warning(
+                    f"Commit created {scan_result.conflicts_new} new conflict(s) "
+                    f"for memory {memory_id}"
+                )
+        except Exception as e:
+            # Non-fatal: log but don't fail the commit
+            logger.warning(f"Conflict scan failed for {memory_id}: {e}")
 
     def _commit_create(
         self,

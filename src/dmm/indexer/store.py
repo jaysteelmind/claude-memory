@@ -386,6 +386,34 @@ class MemoryStore:
                     operation="count",
                 ) from e
 
+
+    def update_memory_status(self, memory_id: str, status: str) -> bool:
+        """Update memory status (e.g., to deprecated).
+        
+        Args:
+            memory_id: The memory ID to update.
+            status: New status value ('active' or 'deprecated').
+            
+        Returns:
+            True if updated, False if memory not found.
+        """
+        if status not in ('active', 'deprecated'):
+            raise ValueError(f"Invalid status: {status}")
+        
+        with self._get_connection() as conn:
+            try:
+                cursor = conn.execute(
+                    "UPDATE memories SET status = ? WHERE id = ?",
+                    (status, memory_id),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.Error as e:
+                raise StoreError(
+                    f"Failed to update memory status: {e}",
+                    operation="update_status",
+                ) from e
+
     def search_by_directory(
         self,
         query_embedding: list[float],

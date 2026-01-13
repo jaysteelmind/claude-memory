@@ -14,6 +14,7 @@ from dmm.models.proposal import (
     WriteProposal,
 )
 from dmm.reviewer.decisions import DecisionEngine
+from dmm.reviewer.validators.conflict import ConflictChecker
 from dmm.reviewer.validators.duplicate import DuplicateDetector
 from dmm.reviewer.validators.quality import QualityChecker
 from dmm.reviewer.validators.schema import SchemaValidator

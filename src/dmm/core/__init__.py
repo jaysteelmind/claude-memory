@@ -1,5 +1,4 @@
 """DMM core module - constants, configuration, and exceptions."""
-
 from dmm.core.config import (
     DaemonConfig,
     DMMConfig,
@@ -48,6 +47,9 @@ from dmm.core.constants import (
     get_index_root,
     get_memory_root,
     get_stats_db_path,
+    # Phase 3 constants
+    CONFLICTS_DB,
+    get_conflicts_db_path,
 )
 from dmm.core.exceptions import (
     BaselineError,
@@ -69,6 +71,13 @@ from dmm.core.exceptions import (
     StoreError,
     TokenCountError,
     WatcherError,
+    # Phase 3 exceptions
+    ConflictError,
+    ConflictDetectionError,
+    ConflictResolutionError,
+    ConflictNotFoundError,
+    ConflictStoreError,
+    ScanError,
 )
 
 __all__ = [
@@ -115,12 +124,15 @@ __all__ = [
     "REQUIRED_FRONTMATTER_FIELDS",
     "OPTIONAL_FRONTMATTER_FIELDS",
     "BASELINE_PRIORITY_FILES",
+    # Phase 3 constants
+    "CONFLICTS_DB",
     # Path helpers
     "get_dmm_root",
     "get_memory_root",
     "get_index_root",
     "get_embeddings_db_path",
     "get_stats_db_path",
+    "get_conflicts_db_path",
     # Exceptions
     "DMMError",
     "ConfigurationError",
@@ -141,4 +153,11 @@ __all__ = [
     "DaemonStopError",
     "QueryError",
     "WatcherError",
+    # Phase 3 exceptions
+    "ConflictError",
+    "ConflictDetectionError",
+    "ConflictResolutionError",
+    "ConflictNotFoundError",
+    "ConflictStoreError",
+    "ScanError",
 ]

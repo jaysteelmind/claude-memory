@@ -35,6 +35,7 @@ class DecisionEngine:
         quality_issues: list[ValidationIssue],
         duplicate_issues: list[ValidationIssue],
         duplicate_matches: list[DuplicateMatch],
+        conflict_issues: list[ValidationIssue] | None = None,
     ) -> ReviewResult:
         """Make a review decision based on validation results.
         
@@ -44,11 +45,13 @@ class DecisionEngine:
             quality_issues: Issues from quality checking.
             duplicate_issues: Issues from duplicate detection.
             duplicate_matches: Duplicate matches found.
+            conflict_issues: Issues from conflict checking (Phase 3).
             
         Returns:
             ReviewResult with decision and details.
         """
-        all_issues = schema_issues + quality_issues + duplicate_issues
+        conflict_issues = conflict_issues or []
+        all_issues = schema_issues + quality_issues + duplicate_issues + conflict_issues
 
         errors = [i for i in all_issues if i.severity == "error"]
         warnings = [i for i in all_issues if i.severity == "warning"]

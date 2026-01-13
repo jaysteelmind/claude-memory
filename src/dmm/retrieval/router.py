@@ -19,6 +19,11 @@ from dmm.models.memory import IndexedMemory
 from dmm.models.pack import MemoryPackEntry
 from dmm.models.query import RetrievalResult, SearchFilters
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dmm.conflicts.store import ConflictStore
+
 
 @dataclass
 class RetrievalConfig:
@@ -37,6 +42,7 @@ class RetrievalRouter:
         store: MemoryStore,
         embedder: MemoryEmbedder,
         config: RetrievalConfig | None = None,
+        conflict_store=None,
     ) -> None:
         """
         Initialize the retrieval router.
@@ -49,6 +55,7 @@ class RetrievalRouter:
         self._store = store
         self._embedder = embedder
         self._config = config or RetrievalConfig()
+        self._conflict_store = conflict_store
 
     def retrieve(
         self,
@@ -107,13 +114,54 @@ class RetrievalRouter:
         # Select within budget
         entries, excluded = self._select_within_budget(diverse_candidates, budget)
 
+        # Phase 3: Check for conflicts among retrieved memories
+        conflict_alerts = self._check_conflicts(entries)
+        
         return RetrievalResult(
             entries=entries,
             total_tokens=sum(e.token_count for e in entries),
             directories_searched=directories_searched or [],
             candidates_considered=candidates_considered,
             excluded_for_budget=excluded,
+            conflict_alerts=conflict_alerts,
         )
+
+    def _check_conflicts(self, entries: list) -> list[dict]:
+        """Check for conflicts among retrieved memories.
+        
+        Args:
+            entries: List of MemoryPackEntry objects.
+            
+        Returns:
+            List of conflict alert dictionaries.
+        """
+        if not self._conflict_store or not entries:
+            return []
+        
+        alerts = []
+        memory_ids = [e.memory_id for e in entries if hasattr(e, 'memory_id')]
+        
+        if len(memory_ids) < 2:
+            return []
+        
+        try:
+            conflicts = self._conflict_store.get_conflicts_among(memory_ids)
+            
+            for conflict in conflicts:
+                if conflict.status.value in ("unresolved", "in_progress"):
+                    mem_ids = [m.memory_id for m in conflict.memories]
+                    alerts.append({
+                        "conflict_id": conflict.conflict_id,
+                        "type": conflict.conflict_type.value,
+                        "confidence": conflict.confidence,
+                        "memory_ids": mem_ids,
+                        "description": conflict.description,
+                        "status": conflict.status.value,
+                    })
+        except Exception:
+            pass  # Non-fatal - don't fail retrieval for conflict check errors
+        
+        return alerts
 
     def _rank_candidates(
         self,

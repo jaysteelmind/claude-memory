@@ -25,6 +25,7 @@ from dmm.daemon.health import HealthChecker
 from dmm.daemon.routes.review import router as review_router
 from dmm.daemon.routes.usage import router as usage_router
 from dmm.daemon.routes.write import router as write_router
+from dmm.daemon.routes.conflicts import router as conflicts_router
 from dmm.indexer.indexer import Indexer
 from dmm.retrieval.assembler import ContextAssembler
 from dmm.retrieval.baseline import BaselineManager
@@ -138,6 +139,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Register Phase 2 routers
+app.include_router(write_router)
+app.include_router(review_router)
+app.include_router(usage_router)
+
+# Register Phase 3 routers
+app.include_router(conflicts_router)
 
 
 @app.get("/health")

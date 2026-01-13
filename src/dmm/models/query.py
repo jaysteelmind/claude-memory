@@ -162,6 +162,7 @@ class RetrievalResult:
     directories_searched: list[str]
     candidates_considered: int
     excluded_for_budget: list[str] = field(default_factory=list)
+    conflict_alerts: list[dict] = field(default_factory=list)  # Phase 3
 
 
 @dataclass

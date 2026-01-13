@@ -349,3 +349,110 @@ class UsageTrackingError(DMMError):
     """Raised when usage tracking operations fail."""
 
     pass
+
+
+# =============================================================================
+# Phase 3: Conflict Detection Exceptions
+# =============================================================================
+
+
+class ConflictError(DMMError):
+    """Base exception for conflict detection operations."""
+
+    pass
+
+
+class ConflictDetectionError(ConflictError):
+    """Raised when conflict detection fails."""
+
+    def __init__(
+        self,
+        message: str,
+        method: str | None = None,
+        memory_ids: list[str] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if method:
+            details["method"] = method
+        if memory_ids:
+            details["memory_ids"] = memory_ids
+        super().__init__(message, details)
+        self.method = method
+        self.memory_ids = memory_ids
+
+
+class ConflictResolutionError(ConflictError):
+    """Raised when conflict resolution fails."""
+
+    def __init__(
+        self,
+        message: str,
+        conflict_id: str | None = None,
+        action: str | None = None,
+        rollback_success: bool | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if conflict_id:
+            details["conflict_id"] = conflict_id
+        if action:
+            details["action"] = action
+        if rollback_success is not None:
+            details["rollback_success"] = rollback_success
+        super().__init__(message, details)
+        self.conflict_id = conflict_id
+        self.action = action
+        self.rollback_success = rollback_success
+
+
+class ConflictNotFoundError(ConflictError):
+    """Raised when a conflict is not found."""
+
+    def __init__(
+        self,
+        message: str,
+        conflict_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if conflict_id:
+            details["conflict_id"] = conflict_id
+        super().__init__(message, details)
+        self.conflict_id = conflict_id
+
+
+class ScanError(ConflictError):
+    """Raised when a conflict scan fails."""
+
+    def __init__(
+        self,
+        message: str,
+        scan_id: str | None = None,
+        scan_type: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if scan_id:
+            details["scan_id"] = scan_id
+        if scan_type:
+            details["scan_type"] = scan_type
+        super().__init__(message, details)
+        self.scan_id = scan_id
+        self.scan_type = scan_type
+
+
+class ConflictStoreError(ConflictError):
+    """Raised when conflict store operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        operation: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if operation:
+            details["operation"] = operation
+        super().__init__(message, details)
+        self.operation = operation

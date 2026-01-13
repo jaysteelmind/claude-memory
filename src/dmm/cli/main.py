@@ -14,6 +14,7 @@ from dmm.cli.query import query_command
 from dmm.cli.review import app as review_app
 from dmm.cli.usage import app as usage_app
 from dmm.cli.write import app as write_app
+from dmm.cli.conflicts import app as conflicts_app
 from dmm.core.constants import DEFAULT_HOST, DEFAULT_PORT, get_memory_root
 
 console = Console()
@@ -34,6 +35,9 @@ app.command("query")(query_command)
 app.add_typer(write_app, name="write")
 app.add_typer(review_app, name="review")
 app.add_typer(usage_app, name="usage")
+
+# Phase 3: Conflict detection commands
+app.add_typer(conflicts_app, name="conflicts")
 
 
 @app.command("status")
@@ -239,7 +243,7 @@ def init_command(
     # Initialize Phase 2 databases
     from dmm.writeback.queue import ReviewQueue
     from dmm.writeback.usage import UsageTracker
-    from dmm.writeback.conflicts import initialize_conflicts_db
+    from dmm.conflicts.store import ConflictStore
     
     # Review queue
     queue = ReviewQueue(dmm_root.parent)
@@ -252,13 +256,17 @@ def init_command(
     tracker.close()
     
     # Conflicts database (Phase 3 preparation)
-    initialize_conflicts_db(dmm_root.parent)
+    # Initialize Phase 3 ConflictStore
+    conflict_store = ConflictStore(dmm_root.parent)
+    conflict_store.initialize()
+    conflict_store.close()
 
-    # Create BOOT.md with Phase 2 updates
-    boot_content = """# DMM Boot Instructions
+    # Create BOOT.md with Phase 3 updates
+    boot_content = """# DMM Boot Instructions (Phase 3 - Complete)
 
 You have access to a Dynamic Markdown Memory (DMM) system that provides
-relevant context for your tasks without loading everything into context.
+relevant context for your tasks, allows you to record new knowledge, and
+helps manage contradictions in the memory store.
 
 ## What You Always Have
 
@@ -271,7 +279,10 @@ When you need context beyond baseline, request a Memory Pack:
 
     dmm query "<describe your task or question>" --budget 1200
 
-## How to Write Memory (Phase 2)
+Note: If the retrieved memories contain conflicts, you will see a warning.
+Check conflicts before proceeding with conflicting guidance.
+
+## How to Write Memory
 
 To propose a new memory:
 
@@ -285,42 +296,75 @@ To deprecate a memory:
 
     dmm write deprecate <memory_id> --reason "deprecation reason"
 
-To promote a memory to a different scope:
-
-    dmm write promote <memory_id> --scope global --reason "promotion reason"
-
-## Review Process
-
 All write proposals go through review:
 
     dmm review list           # See pending proposals
     dmm review process <id>   # Review a proposal
     dmm review batch          # Review all pending
 
-## When to Retrieve
+## Conflict Awareness (Phase 3)
 
-Request a Memory Pack:
-- At task start (if baseline is insufficient)
-- When switching to a different domain
-- After encountering a failure or contradiction
-- Before producing final deliverables
+The memory system detects conflicts between memories. You should:
 
-## When to Write
+### Check for Conflicts
 
-Propose a new memory when:
-- You discover a project constraint or decision
-- A pattern emerges that should be documented
-- You find information that would help future tasks
-- Temporary findings need to be preserved (ephemeral)
+Before relying on retrieved memories for critical decisions:
 
-## Memory Quality Guidelines
+    dmm conflicts check --memories "mem_id1,mem_id2"
 
-Good memories are:
-- **Atomic**: One concept per file (300-800 tokens)
-- **Self-contained**: No undefined references
-- **Actionable**: Clear what to do with the information
-- **Justified**: Include rationale for decisions
-- **Appropriately scoped**: baseline < global < project < ephemeral
+### When You Notice Conflicts
+
+If you observe contradictory guidance:
+
+1. Flag the conflict:
+
+    dmm conflicts flag --memories "mem_id1,mem_id2" --description "These contradict on X"
+
+2. Continue with the more recent or higher-priority memory
+3. Note the conflict in your response to the user
+
+### Resolving Conflicts
+
+If you can determine which memory is correct:
+
+    dmm conflicts resolve <conflict_id> --action deprecate --target <wrong_memory_id> --reason "Reason"
+
+Resolution actions:
+- **deprecate**: Mark one memory as deprecated
+- **merge**: Combine into single authoritative memory
+- **clarify**: Add scope/conditions to both
+- **dismiss**: Mark as false positive
+
+### Run Conflict Scans
+
+    dmm conflicts scan --full    # Full scan
+    dmm conflicts list           # View conflicts
+    dmm conflicts stats          # Statistics
+
+## Best Practices
+
+1. **Check high-stakes decisions**: Before outputting critical guidance,
+   verify no conflicts affect the relevant memories.
+
+2. **Flag early**: If you notice contradictions, flag them immediately
+   even if you can work around them.
+
+3. **Prefer recent over old**: When forced to choose between conflicting
+   memories, prefer more recently modified ones.
+
+4. **Prefer higher scope**: global > project > ephemeral for conflict
+   resolution priority.
+
+5. **Do not ignore conflicts**: Silently choosing one interpretation
+   without flagging creates technical debt.
+
+## Current Capabilities (Phase 3 - Complete)
+
+- Memory retrieval with Baseline Pack
+- Write-back with Reviewer Agent
+- Usage tracking
+- Conflict detection (automatic)
+- Conflict resolution workflow
 """
     (dmm_root / "BOOT.md").write_text(boot_content)
 
