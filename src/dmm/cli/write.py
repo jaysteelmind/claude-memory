@@ -43,9 +43,10 @@ def propose_create(
     content_file: Path = typer.Option(None, "--file", "-f", help="File containing memory content"),
     reason: str = typer.Option(..., "--reason", "-r", help="Reason for creating this memory"),
     proposed_by: str = typer.Option("cli", "--by", help="Proposer identifier"),
+    auto_commit: bool = typer.Option(True, "--auto-commit/--no-auto-commit", help="Auto-approve and commit (default: True)"),
 ) -> None:
-    """Propose a new memory creation."""
-    handler, queue, _ = get_components()
+    """Propose a new memory creation. Auto-commits by default."""
+    handler, queue, base, store, embedder = get_components()
     
     if content_file:
         if not content_file.exists():
@@ -77,6 +78,29 @@ def propose_create(
             title="Write Proposal",
         ))
         
+        if auto_commit:
+            from dmm.models.proposal import ReviewDecision
+            from dmm.writeback.commit import CommitEngine
+            from dmm.indexer.indexer import MemoryIndexer
+            
+            queue.update_status(
+                proposal.proposal_id,
+                "approved",
+                ReviewDecision.APPROVE,
+                notes="Auto-approved"
+            )
+            
+            base = Path.cwd()
+            indexer = MemoryIndexer(store, embedder, base)
+            commit_engine = CommitEngine(queue, indexer, base)
+            
+            try:
+                result = commit_engine.commit(proposal)
+                console.print(f"[green]Memory committed:[/green] {result.memory_path}")
+            except Exception as e:
+                console.print(f"[yellow]Warning: Auto-commit failed:[/yellow] {e}")
+                console.print("Use 'dmm review approve <id>' to commit manually")
+        
     except ProposalError as e:
         console.print(f"[red]Error:[/red] {e.message}")
         if e.details:
@@ -93,7 +117,7 @@ def propose_update(
     proposed_by: str = typer.Option("cli", "--by", help="Proposer identifier"),
 ) -> None:
     """Propose an update to an existing memory."""
-    handler, queue, _ = get_components()
+    handler, queue, base, store, embedder = get_components()
     
     if content_file:
         if not content_file.exists():
@@ -137,7 +161,7 @@ def propose_deprecate(
     proposed_by: str = typer.Option("cli", "--by", help="Proposer identifier"),
 ) -> None:
     """Propose deprecation of a memory."""
-    handler, queue, _ = get_components()
+    handler, queue, base, store, embedder = get_components()
     
     try:
         proposal = handler.propose_deprecate(
@@ -168,7 +192,7 @@ def propose_promote(
     proposed_by: str = typer.Option("cli", "--by", help="Proposer identifier"),
 ) -> None:
     """Propose promoting a memory to a different scope."""
-    handler, queue, _ = get_components()
+    handler, queue, base, store, embedder = get_components()
     
     try:
         proposal = handler.propose_promote(
@@ -273,7 +297,7 @@ def cancel_proposal(
     proposal_id: str = typer.Argument(..., help="Proposal ID to cancel"),
 ) -> None:
     """Cancel a pending proposal."""
-    handler, queue, _ = get_components()
+    handler, queue, base, store, embedder = get_components()
     
     if handler.cancel_proposal(proposal_id):
         console.print(f"[green]Proposal {proposal_id} cancelled[/green]")
