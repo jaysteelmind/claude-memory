@@ -4,6 +4,44 @@ This project uses **DMM (Dynamic Markdown Memory)** - a file-native cognitive me
 system that provides relevant context for your tasks without loading everything
 into the context window.
 
+## First-Time Setup (Bootstrap)
+
+**Before using DMM commands, verify the system is installed and running.**
+
+### Step 1: Check if DMM is available
+```bash
+dmm --version
+```
+
+If this command fails (command not found), run the bootstrap installer:
+```bash
+./bin/dmm-bootstrap
+```
+
+This will:
+- Install Poetry (if needed)
+- Install all DMM dependencies
+- Install the `dmm` command globally
+- Initialize the `.dmm` directory (if needed)
+
+### Step 2: Start the DMM Daemon
+```bash
+dmm daemon start
+```
+
+### Step 3: Verify the System
+```bash
+dmm claude check
+```
+
+You should see "Integration: READY" with all components showing "found" or "running".
+
+---
+
+**Once setup is complete, proceed to Quick Start below.**
+
+---
+
 ## Quick Start
 
 ### 1. Check if DMM daemon is running

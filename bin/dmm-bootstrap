@@ -1,0 +1,132 @@
+#!/bin/bash
+# =============================================================================
+# dmm-bootstrap - Install and configure DMM system
+# =============================================================================
+#
+# Usage: ./bin/dmm-bootstrap
+#
+# This script:
+# 1. Checks for Python 3.11+
+# 2. Installs Poetry if not present
+# 3. Installs DMM dependencies
+# 4. Installs dmm command globally
+# 5. Initializes .dmm directory if needed
+# 6. Verifies installation
+#
+# =============================================================================
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  DMM Bootstrap Installer${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+
+# Get script directory (where claude-memory repo is)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DMM_REPO_DIR="$(dirname "${SCRIPT_DIR}")"
+PROJECT_DIR="$(pwd)"
+
+echo -e "${YELLOW}DMM Repository:${NC} ${DMM_REPO_DIR}"
+echo -e "${YELLOW}Project Directory:${NC} ${PROJECT_DIR}"
+echo ""
+
+# Step 1: Check Python version
+echo -e "${BLUE}[1/6] Checking Python version...${NC}"
+if command -v python3 &> /dev/null; then
+    PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    PYTHON_MAJOR=$(echo "${PYTHON_VERSION}" | cut -d. -f1)
+    PYTHON_MINOR=$(echo "${PYTHON_VERSION}" | cut -d. -f2)
+    
+    if [ "${PYTHON_MAJOR}" -ge 3 ] && [ "${PYTHON_MINOR}" -ge 11 ]; then
+        echo -e "${GREEN}  Python ${PYTHON_VERSION} found${NC}"
+    else
+        echo -e "${RED}  Error: Python 3.11+ required, found ${PYTHON_VERSION}${NC}"
+        exit 1
+    fi
+else
+    echo -e "${RED}  Error: Python3 not found${NC}"
+    exit 1
+fi
+
+# Step 2: Check/Install Poetry
+echo -e "${BLUE}[2/6] Checking Poetry...${NC}"
+if command -v poetry &> /dev/null; then
+    POETRY_VERSION=$(poetry --version | grep -oP '\d+\.\d+\.\d+')
+    echo -e "${GREEN}  Poetry ${POETRY_VERSION} found${NC}"
+else
+    echo -e "${YELLOW}  Poetry not found. Installing...${NC}"
+    curl -sSL https://install.python-poetry.org | python3 -
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    if command -v poetry &> /dev/null; then
+        echo -e "${GREEN}  Poetry installed successfully${NC}"
+    else
+        echo -e "${RED}  Error: Poetry installation failed${NC}"
+        exit 1
+    fi
+fi
+
+# Step 3: Install DMM dependencies
+echo -e "${BLUE}[3/6] Installing DMM dependencies...${NC}"
+cd "${DMM_REPO_DIR}"
+poetry install --no-interaction
+echo -e "${GREEN}  Dependencies installed${NC}"
+
+# Step 4: Install dmm command globally
+echo -e "${BLUE}[4/6] Installing dmm command...${NC}"
+poetry build --no-interaction
+pip install dist/*.whl --break-system-packages --force-reinstall --quiet 2>/dev/null || \
+pip install dist/*.whl --force-reinstall --quiet
+
+if command -v dmm &> /dev/null; then
+    echo -e "${GREEN}  dmm command installed${NC}"
+else
+    # Add local bin to PATH hint
+    echo -e "${YELLOW}  dmm installed but not in PATH${NC}"
+    echo -e "${YELLOW}  Add to your shell profile:${NC}"
+    echo -e "${YELLOW}    export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+fi
+
+# Step 5: Initialize .dmm in project directory if needed
+echo -e "${BLUE}[5/6] Checking project initialization...${NC}"
+cd "${PROJECT_DIR}"
+if [ -d ".dmm" ]; then
+    echo -e "${GREEN}  .dmm directory exists${NC}"
+else
+    echo -e "${YELLOW}  Initializing DMM in project...${NC}"
+    dmm init 2>/dev/null || poetry --directory="${DMM_REPO_DIR}" run dmm init
+    echo -e "${GREEN}  DMM initialized${NC}"
+fi
+
+# Step 6: Verify installation
+echo -e "${BLUE}[6/6] Verifying installation...${NC}"
+if command -v dmm &> /dev/null; then
+    dmm --version 2>/dev/null || dmm --help | head -3
+    echo -e "${GREEN}  Verification complete${NC}"
+else
+    cd "${DMM_REPO_DIR}"
+    poetry run dmm --help | head -3
+    echo -e "${GREEN}  Verification complete (via poetry)${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}  DMM Installation Complete${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+echo -e "To start the daemon:"
+echo -e "  ${BLUE}dmm daemon start${NC}"
+echo ""
+echo -e "To query memories:"
+echo -e "  ${BLUE}dmm query \"your task description\"${NC}"
+echo ""
+echo -e "To check integration status:"
+echo -e "  ${BLUE}dmm claude check${NC}"
+echo ""
