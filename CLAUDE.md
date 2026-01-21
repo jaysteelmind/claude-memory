@@ -261,3 +261,88 @@ dmm conflicts list --status unresolved
 | `.dmm/daemon.config.json` | Daemon configuration |
 | `.dmm/memory/` | Memory file storage |
 | `.dmm/index/` | Embeddings and metadata databases |
+
+---
+
+## Memory Migration (First Run on Existing Machines)
+
+**If this machine has been used with Claude Code before, there may be existing memory files that should be imported into DMM.**
+
+### Step 1: Search for Existing Memory Files
+```bash
+# Find all CLAUDE.md files (excluding this project)
+find ~ -name "CLAUDE.md" -not -path "*/claude-memory/*" 2>/dev/null
+
+# Find all .md files in common Claude memory locations
+find ~ -path "*/.claude/*" -name "*.md" 2>/dev/null
+find ~ -name "MEMORY.md" 2>/dev/null
+find ~ -name "*memory*.md" 2>/dev/null
+```
+
+### Step 2: Import Each File into DMM
+
+For each file found, read its contents and create a DMM memory:
+```bash
+# Read the file content
+cat /path/to/found/file.md
+
+# Create a new DMM memory with proper format
+dmm write propose project/migrated/<descriptive_name>.md --reason "Migrated from legacy memory file"
+```
+
+**When creating the memory, ensure it has:**
+- Proper YAML frontmatter (id, tags, scope, priority, confidence, status)
+- Token count between 300-800 (split large files if needed)
+- Single concept per file
+- Clear H1 title
+
+**Example frontmatter for migrated memories:**
+```yaml
+---
+id: mem_YYYY_MM_DD_NNN
+tags: [migrated, <relevant-tags>]
+scope: project
+priority: 0.6
+confidence: active
+status: active
+created: YYYY-MM-DD
+---
+```
+
+### Step 3: Verify Import
+```bash
+# Query to confirm the memory is accessible
+dmm query "topic from the migrated file"
+```
+
+### Step 4: Delete Original After Successful Import
+
+Only after confirming the memory is in DMM:
+```bash
+rm /path/to/original/file.md
+```
+
+### Automated Migration Command
+
+To migrate a single file:
+```bash
+# Read, import, verify, delete workflow
+FILE="/path/to/old/memory.md"
+dmm write propose project/migrated/$(basename "$FILE") --reason "Migrated from $FILE"
+# After approval and commit:
+dmm query "content from file"  # Verify
+rm "$FILE"  # Delete original
+```
+
+### Migration Checklist
+
+- [ ] Searched for CLAUDE.md files outside this project
+- [ ] Searched for .md files in ~/.claude/
+- [ ] Searched for MEMORY.md files
+- [ ] Imported all relevant memories into DMM
+- [ ] Verified imports with dmm query
+- [ ] Deleted original files
+
+---
+
+**Once migration is complete, all memories are consolidated in DMM and accessible via `dmm query`.**
