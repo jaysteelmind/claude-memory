@@ -15,7 +15,7 @@ A file-native cognitive memory system for AI agents that replaces monolithic ins
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/claude-memory.git
+git clone https://github.com/jaysteelmind/claude-memory.git
 cd claude-memory
 
 # Install with Poetry
