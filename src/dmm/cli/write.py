@@ -25,6 +25,7 @@ def get_components(base_path: Path | None = None):
     base = base_path or Path.cwd()
     
     from dmm.core.constants import get_embeddings_db_path
+    from dmm.indexer.embedder import MemoryEmbedder
     
     queue = ReviewQueue(base)
     queue.initialize()
@@ -32,9 +33,11 @@ def get_components(base_path: Path | None = None):
     store = MemoryStore(get_embeddings_db_path(base))
     store.initialize()
     
+    embedder = MemoryEmbedder()
+    
     handler = ProposalHandler(queue, store, base)
     
-    return handler, queue, store
+    return handler, queue, base, store, embedder
 
 
 @app.command("propose")
@@ -79,24 +82,31 @@ def propose_create(
         ))
         
         if auto_commit:
-            from dmm.models.proposal import ReviewDecision
+            from dmm.models.proposal import ProposalStatus
             from dmm.writeback.commit import CommitEngine
-            from dmm.indexer.indexer import MemoryIndexer
+            from dmm.indexer.indexer import Indexer
+            from dmm.core.config import DMMConfig
             
+            # Update status in database
             queue.update_status(
                 proposal.proposal_id,
-                "approved",
-                ReviewDecision.APPROVE,
+                ProposalStatus.APPROVED,
                 notes="Auto-approved"
             )
             
-            base = Path.cwd()
-            indexer = MemoryIndexer(store, embedder, base)
+            # Update the proposal object's status so commit() accepts it
+            proposal.status = ProposalStatus.APPROVED
+            
+            config = DMMConfig.load(base)
+            indexer = Indexer(config, base)
             commit_engine = CommitEngine(queue, indexer, base)
             
             try:
                 result = commit_engine.commit(proposal)
-                console.print(f"[green]Memory committed:[/green] {result.memory_path}")
+                if result.success:
+                    console.print(f"[green]Memory committed:[/green] {result.memory_path}")
+                else:
+                    console.print(f"[yellow]Warning: Commit failed:[/yellow] {result.error}")
             except Exception as e:
                 console.print(f"[yellow]Warning: Auto-commit failed:[/yellow] {e}")
                 console.print("Use 'dmm review approve <id>' to commit manually")
