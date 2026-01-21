@@ -1,258 +1,465 @@
+<div align="center">
+
 # DMM - Dynamic Markdown Memory
 
-A file-native cognitive memory system for AI agents that replaces monolithic instruction files with a semantic, hierarchical collection of atomic markdown micro-files.
+### A File-Native Cognitive Memory System for AI Agents
 
-## Features
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Phases](https://img.shields.io/badge/phases%201--4-complete-success)]()
 
-- **Semantic Retrieval**: Two-stage retrieval using composite embeddings
-- **Token Budgeting**: Respects context window limits with configurable budgets
-- **Baseline Guarantee**: Critical context always included in every query
-- **File-Native**: All memories stored as auditable markdown files with Git support
-- **Hot Reloading**: File watcher automatically indexes changes
+*Persistent, semantic memory that gives AI agents context without overwhelming token budgets*
 
-## Quick Start
+**Created By: Jerome Naidoo**
 
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/jaysteelmind/claude-memory.git
-cd claude-memory
+[Overview](#overview) • [Architecture](#architecture) • [Key Features](#key-features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation)
 
-# Install with Poetry
-poetry install
+</div>
 
-# Verify installation
-poetry run dmm --help
-```
-
-### Initialize a Project
-```bash
-# Initialize DMM in your project directory
-cd /path/to/your/project
-dmm init
-
-# This creates:
-# .dmm/
-#   BOOT.md              - Agent boot instructions
-#   policy.md            - Memory policies
-#   daemon.config.json   - Configuration
-#   memory/
-#     baseline/          - Always-included memories
-#     global/            - Cross-project knowledge
-#     agent/             - Agent behavior rules
-#     project/           - Project-specific context
-#     ephemeral/         - Temporary findings
-```
-
-### Start the Daemon
-```bash
-# Start in background
-dmm daemon start
-
-# Or run in foreground for debugging
-dmm daemon start --foreground
-
-# Check status
-dmm daemon status
-```
-
-### Query for Context
-```bash
-# Basic query
-dmm query "implement user authentication"
-
-# With custom budget
-dmm query "debug database connection" --budget 1500
-
-# Filter by scope
-dmm query "API design" --scope project
-
-# Save to file
-dmm query "system architecture" --output context.md
-```
-
-### Validate Memory Files
-```bash
-# Validate all memory files
-dmm validate
-
-# Validate specific file
-dmm validate --path .dmm/memory/project/my_memory.md
-```
-
-## Memory File Format
-
-Each memory file is a Markdown document with YAML frontmatter:
-```markdown
 ---
-id: mem_2025_01_15_001
-tags: [authentication, security, api]
+
+## Overview
+
+Large language models operate within fixed context windows, forcing a constant tradeoff between **comprehensive context** and **token efficiency**. Current approaches either dump everything into the prompt (wasting tokens) or rely on fragile keyword matching (missing relevant context).
+
+**DMM** reframes AI memory as a **semantic retrieval problem** rather than a context stuffing exercise. By treating memories as atomic, typed markdown files with vector embeddings, DMM provides:
+
+- **Relevant** — semantic search retrieves only what matters for the current task
+- **Efficient** — token budgets are respected, not exceeded
+- **Persistent** — memories survive across sessions and machines
+- **Governed** — baseline context is guaranteed, scopes control visibility
+- **Automatic** — no manual approval needed, memories commit instantly
+
+This represents production-grade memory infrastructure for AI coding assistants, formalized into a deployable system.
+
+---
+
+## The Problem with Current Approaches
+
+Most AI memory systems introduce friction or fail silently:
+
+| Problem | Description |
+|---------|-------------|
+| **Context Overflow** | Dumping all context exhausts token budgets |
+| **Keyword Fragility** | Simple matching misses semantically related content |
+| **Session Amnesia** | Knowledge lost between conversations |
+| **Manual Overhead** | Requiring human approval for every memory |
+| **No Guarantees** | Critical context may be omitted randomly |
+
+DMM eliminates these problems through semantic embeddings, guaranteed baseline inclusion, and automatic memory commits.
+
+---
+
+## Architecture
+
+DMM operates as a **daemon-based retrieval system** with a two-stage semantic pipeline:
+```
+Query → Embed → Stage 1 (Directory Routing) → Stage 2 (Memory Ranking) → Pack Assembly → Response
+```
+
+| Component | Purpose | Output |
+|-----------|---------|--------|
+| **Daemon** | FastAPI server with hot-reload indexing | HTTP API on port 7433 |
+| **Indexer** | Parses markdown, generates 384-dim embeddings | SQLite vector store |
+| **Retriever** | Two-stage semantic search with budget packing | Ranked memory list |
+| **Writer** | Proposes and auto-commits new memories | Atomic file creation |
+| **Reviewer** | Validates memory quality and conflicts | Quality gates |
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              DMM ARCHITECTURE                                   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
+│   │   Memory    │    │   Vector    │    │  Retrieval  │    │    Pack     │    │
+│   │   Files     │───▶│   Index     │───▶│   Pipeline  │───▶│  Assembly   │    │
+│   │             │    │             │    │             │    │             │    │
+│   │  .dmm/      │    │  SQLite +   │    │  2-Stage    │    │  Budget-    │    │
+│   │  memory/    │    │  Embeddings │    │  Semantic   │    │  Aware      │    │
+│   │             │    │             │    │  Search     │    │  Packing    │    │
+│   └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    │
+│         │                  │                  │                  │             │
+│         │                  │                  │                  │             │
+│         ▼                  ▼                  ▼                  ▼             │
+│   Markdown with      384-dim vectors     Directory →        Baseline +        │
+│   YAML frontmatter   (MiniLM-L6-v2)      Memory routing     Retrieved context │
+│                                                                                 │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   Memory Scopes:                                                                │
+│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
+│   │ baseline │ │  global  │ │  agent   │ │ project  │ │ephemeral │           │
+│   │ ALWAYS   │ │ Cross-   │ │ Behavior │ │ Project- │ │ Temporary│           │
+│   │ included │ │ project  │ │ rules    │ │ specific │ │ expires  │           │
+│   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Key Features
+
+### Semantic Retrieval
+- **384-dimensional embeddings** using sentence-transformers (all-MiniLM-L6-v2)
+- **Two-stage search**: Directory routing → Memory ranking
+- **Cosine similarity** with priority and confidence weighting
+- **Budget-aware packing**: Never exceeds specified token limits
+
+### Memory Scopes
+| Scope | Purpose | Retrieval |
+|-------|---------|-----------|
+| `baseline` | Critical identity and constraints | **Always included** |
+| `global` | Cross-project standards | When relevant |
+| `agent` | Behavioral rules and style | When relevant |
+| `project` | Project-specific knowledge | When relevant |
+| `ephemeral` | Temporary context with expiration | When relevant, auto-expires |
+
+### Automatic Commits
+- **No manual approval** — memories commit instantly by default
+- **Quality validation** — frontmatter and content checks
+- **Conflict detection** — semantic similarity and tag overlap analysis
+- **Atomic writes** — all-or-nothing file creation with rollback
+
+### Claude Code Integration
+- **CLAUDE.md** — Project instructions Claude reads automatically
+- **Bootstrap script** — One-command installation on new machines
+- **Wrapper script** — `claudex` starts daemon and launches Claude
+- **Live memory** — Query and write during conversations
+
+---
+
+## What Makes This Different
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Typical AI Memory</th>
+<th>DMM</th>
+</tr>
+<tr>
+<td><b>Retrieval</b></td>
+<td>Keyword matching or full dump</td>
+<td>Semantic vector search</td>
+</tr>
+<tr>
+<td><b>Persistence</b></td>
+<td>Session-only or cloud-dependent</td>
+<td>Local markdown files (git-trackable)</td>
+</tr>
+<tr>
+<td><b>Token Budget</b></td>
+<td>Often exceeded or ignored</td>
+<td>Strictly enforced with packing</td>
+</tr>
+<tr>
+<td><b>Baseline Guarantee</b></td>
+<td>None</td>
+<td>Always included, never dropped</td>
+</tr>
+<tr>
+<td><b>Approval Workflow</b></td>
+<td>Manual or none</td>
+<td>Automatic with quality gates</td>
+</tr>
+<tr>
+<td><b>Multi-Machine</b></td>
+<td>Cloud sync required</td>
+<td>Git-based, works offline</td>
+</tr>
+</table>
+
+---
+
+## Installation
+
+### New Machine (Full Install)
+```bash
+# Clone repository
+git clone https://github.com/jaysteelmind/claude-memory.git ~/projects/claude-memory
+
+# Run installer
+cd ~/projects/claude-memory && ./start.sh
+
+# Use from anywhere
+claudex
+```
+
+### Requirements
+- Python 3.11+
+- Poetry (auto-installed by bootstrap)
+- ~90MB disk for embedding model (downloaded once)
+- Claude Code (for `claudex` wrapper)
+
+### What `start.sh` Does
+1. Runs `bin/dmm-bootstrap` (installs Poetry, dependencies, `dmm` command)
+2. Installs `claudex` to `/usr/local/bin/`
+3. Verifies installation
+
+---
+
+## Usage
+
+### Start Claude Code with DMM
+```bash
+# From anywhere on your machine
+claudex
+```
+
+This:
+1. Starts the DMM daemon
+2. Launches Claude Code in the project directory
+3. Stops daemon when Claude exits
+
+### CLI Commands
+```bash
+# Check system status
+dmm daemon status
+dmm claude check
+
+# Query for relevant context
+dmm query "implement authentication" --budget 1500
+
+# Save a new memory (auto-commits)
+echo '---
+id: mem_2026_01_21_001
+tags: [api, authentication]
 scope: project
 priority: 0.8
 confidence: active
 status: active
-created: 2025-01-15
 ---
+# Authentication Pattern
+Use JWT tokens with 24-hour expiration...' | dmm write propose project/auth-pattern.md --reason "Document auth approach"
 
-# Authentication Strategy
+# Reindex after manual file changes
+dmm reindex
 
-We use JWT tokens for API authentication with a 1-hour expiry.
-Refresh tokens are stored in httpOnly cookies.
-
-## Implementation Details
-
-- Tokens signed with RS256 algorithm
-- Public key available at /.well-known/jwks.json
-- Token refresh happens automatically on 401 responses
+# Check for conflicts
+dmm conflicts scan
 ```
 
-### Required Fields
+### Memory File Format
+```markdown
+---
+id: mem_YYYY_MM_DD_NNN
+tags: [tag1, tag2]
+scope: project          # baseline|global|agent|project|ephemeral
+priority: 0.7           # 0.0-1.0, higher = more important
+confidence: active      # experimental|active|stable|deprecated
+status: active          # active|deprecated
+created: 2026-01-21
+expires: 2026-02-21     # optional, for ephemeral scope
+---
+# Memory Title
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | string | Unique identifier (format: `mem_YYYY_MM_DD_NNN`) |
-| tags | list | Semantic tags for retrieval |
-| scope | enum | One of: baseline, global, agent, project, ephemeral |
-| priority | float | 0.0 to 1.0, influences ranking |
-| confidence | enum | One of: experimental, active, stable, deprecated |
-| status | enum | One of: active, deprecated |
+Content goes here. Keep memories atomic (300-800 tokens).
+Single concept per file. No undefined references.
+```
 
-### Optional Fields
+### Programmatic Access
+```python
+from dmm.retriever.pack_builder import PackBuilder
+from dmm.indexer.store import MemoryStore
+from dmm.core.config import DMMConfig
 
-| Field | Type | Description |
-|-------|------|-------------|
-| created | date | Creation date |
-| last_used | date | Last retrieval date |
-| usage_count | int | Times retrieved |
-| supersedes | list | IDs of replaced memories |
-| related | list | IDs of related memories |
-| expires | date | Auto-deprecation date (for ephemeral) |
+# Load configuration
+config = DMMConfig.load(Path.cwd())
+store = MemoryStore(config.index_path / "embeddings.db")
 
-## Scopes
+# Build a memory pack
+builder = PackBuilder(store, config)
+pack = builder.build(
+    query="implement user authentication",
+    token_budget=1500,
+)
 
-| Scope | Description | Retrieval Behavior |
-|-------|-------------|-------------------|
-| baseline | Critical, always-relevant context | Always included |
-| global | Stable, cross-project truths | Retrieved when relevant |
-| agent | Behavioral rules for the agent | Retrieved when relevant |
-| project | Project-specific decisions | Retrieved when relevant |
-| ephemeral | Temporary findings | Auto-expires; retrieved when relevant |
+print(f"Retrieved: {len(pack.memories)} memories")
+print(f"Tokens used: {pack.total_tokens}")
+```
+
+---
+
+## Project Structure
+```
+claude-memory/
+├── CLAUDE.md                    # Instructions for Claude Code
+├── start.sh                     # One-command installer
+├── bin/
+│   ├── dmm-bootstrap            # Dependency installer
+│   └── claude-code-dmm          # Native wrapper script
+├── .dmm/
+│   ├── BOOT.md                  # Detailed operational instructions
+│   ├── policy.md                # Memory governance policies
+│   ├── daemon.config.json       # Daemon configuration
+│   ├── memory/                  # Memory files by scope
+│   │   ├── baseline/
+│   │   ├── global/
+│   │   ├── agent/
+│   │   ├── project/
+│   │   └── ephemeral/
+│   └── index/                   # SQLite databases
+│       ├── embeddings.db        # Vector store
+│       ├── usage.db             # Usage tracking
+│       └── conflicts.db         # Conflict records
+├── src/dmm/
+│   ├── cli/                     # Command-line interface
+│   │   ├── main.py              # CLI entry point
+│   │   ├── query.py             # Query commands
+│   │   ├── write.py             # Write commands
+│   │   ├── review.py            # Review commands
+│   │   ├── conflicts.py         # Conflict commands
+│   │   └── claude.py            # Integration check
+│   ├── core/                    # Core utilities
+│   │   ├── config.py            # Configuration loading
+│   │   ├── constants.py         # System constants
+│   │   └── exceptions.py        # Custom exceptions
+│   ├── daemon/                  # FastAPI daemon
+│   │   └── server.py
+│   ├── indexer/                 # Indexing pipeline
+│   │   ├── indexer.py           # Main indexer
+│   │   ├── embedder.py          # Embedding generation
+│   │   ├── parser.py            # Markdown parsing
+│   │   └── store.py             # SQLite storage
+│   ├── retriever/               # Retrieval pipeline
+│   │   ├── retriever.py         # Two-stage search
+│   │   └── pack_builder.py      # Budget-aware packing
+│   ├── writeback/               # Write operations
+│   │   ├── proposal.py          # Proposal handling
+│   │   ├── commit.py            # Atomic commits
+│   │   └── queue.py             # Review queue
+│   ├── reviewer/                # Quality validation
+│   │   └── agent.py             # Review agent
+│   └── conflicts/               # Conflict detection
+│       ├── detector.py          # Conflict scanner
+│       └── resolver.py          # Resolution strategies
+└── tests/                       # Test suites
+    ├── test_integration/
+    └── test_claude_integration.py
+```
+
+---
 
 ## Configuration
 
-Edit `.dmm/daemon.config.json`:
+### Daemon Configuration (`.dmm/daemon.config.json`)
 ```json
 {
-  "daemon": {
-    "host": "127.0.0.1",
-    "port": 7433
-  },
-  "retrieval": {
-    "default_budget": 2000,
-    "baseline_budget": 800,
-    "top_k_directories": 3,
-    "max_candidates": 50
-  },
-  "validation": {
-    "min_tokens": 300,
-    "max_tokens": 800
+  "host": "127.0.0.1",
+  "port": 7433,
+  "auto_reload": true,
+  "log_level": "info"
+}
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DMM_PORT` | `7433` | Daemon port |
+| `DMM_HOST` | `127.0.0.1` | Daemon host |
+| `DMM_LOG_LEVEL` | `info` | Logging verbosity |
+
+---
+
+## Development Phases
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| **Phase 1** | Core retrieval, daemon, CLI | Complete |
+| **Phase 2** | Write-back engine, review agent | Complete |
+| **Phase 3** | Conflict detection and resolution | Complete |
+| **Phase 4** | Claude Code integration | Complete |
+| **Phase 5** | Docker deployment | Skipped |
+
+---
+
+## API Reference
+
+### Daemon Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/status` | GET | Daemon status and stats |
+| `/query` | POST | Semantic memory query |
+| `/reindex` | POST | Trigger reindexing |
+
+### Query Request
+```json
+{
+  "query": "implement user authentication",
+  "budget": 1500,
+  "scopes": ["baseline", "project"],
+  "min_relevance": 0.3
+}
+```
+
+### Query Response
+```json
+{
+  "pack": "# DMM Memory Pack\n...",
+  "stats": {
+    "baseline_tokens": 160,
+    "retrieved_tokens": 593,
+    "total_tokens": 753,
+    "memories_included": 4,
+    "memories_excluded": 2
   }
 }
 ```
 
-## Claude Code Integration
+---
 
-DMM integrates seamlessly with Claude Code through the `CLAUDE.md` project instruction file.
+## Troubleshooting
 
-### Automatic Setup
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| `dmm: command not found` | Not installed globally | Run `./bin/dmm-bootstrap` |
+| Daemon won't start | Port in use | `lsof -i :7433` and kill process |
+| Empty query results | Not indexed | Run `dmm reindex` |
+| Slow first query | Model loading | Normal, ~5s first time |
+| Permission denied | Wrapper not executable | `chmod +x /usr/local/bin/claudex` |
 
-When Claude Code starts in a directory with `CLAUDE.md`, it automatically:
-1. Learns that DMM is available
-2. Understands how to start the daemon
-3. Knows all available commands
-4. Follows the operational guidelines in `.dmm/BOOT.md`
-
-### Using the Wrapper Script
-
-For automatic daemon lifecycle management:
+### Debug Commands
 ```bash
-# Add to your shell profile
-export PATH="/path/to/claude-memory/bin:$PATH"
+# Check daemon logs
+dmm daemon status
 
-# Start Claude Code with DMM
-claude-code-dmm
+# Verify integration
+dmm claude check -v
+
+# Test query pipeline
+dmm query "test" --budget 500
+
+# Reindex all memories
+dmm reindex
 ```
 
-The wrapper script:
-- Starts DMM daemon before Claude Code launches
-- Waits for daemon health check
-- Stops daemon automatically when Claude Code exits
+---
 
-### Manual Setup
+## Contributing
 
-If not using the wrapper:
-```bash
-# Terminal 1: Start daemon
-cd /your/project
-dmm daemon start
+Contributions are welcome:
 
-# Terminal 2: Run Claude Code
-claude  # or your IDE
+1. All code must have tests
+2. Memory format must be preserved
+3. Token budgets must be respected
+4. Documentation must accompany new features
 
-# When done
-dmm daemon stop
-```
-
-### Verifying Integration
-```bash
-# Check integration status
-dmm claude check
-
-# Expected output shows status of:
-# - CLAUDE.md presence
-# - .dmm/BOOT.md (Phase 3)
-# - .dmm/policy.md
-# - Daemon status
-# - Wrapper script
-# - Memory directory
-```
-
-## Development
-```bash
-# Run tests
-poetry run pytest
-
-# Run with coverage
-poetry run pytest --cov=dmm
-
-# Type checking
-poetry run mypy src/
-
-# Linting
-poetry run ruff check src/
-```
-
-## Architecture
-```
-DMM Core System
-+------------------+     +------------------+     +------------------+
-|   File Watcher   | --> |     Indexer      | --> |  Embedding Store |
-|                  |     |                  |     |    (SQLite)      |
-+------------------+     +------------------+     +------------------+
-                                                          |
-                                                          v
-+------------------+     +------------------+     +------------------+
-|  Baseline Pack   | --> | Retrieval Router | --> | Context Assembler|
-|     Cache        |     | (2-stage search) |     |                  |
-+------------------+     +------------------+     +------------------+
-                                                          |
-                                                          v
-+------------------+     +------------------+     +------------------+
-| Daemon Manager   | <-> |    HTTP API      | <-> |  CLI Interface   |
-|                  |     |   (FastAPI)      |     |    (Typer)       |
-+------------------+     +------------------+     +------------------+
-```
+---
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License — See [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+**DMM** — *Semantic memory infrastructure for AI agents*
+
+**Jerome Naidoo**
+
+Building persistent, intelligent context for the next generation of AI assistants.
+
+</div>
