@@ -15,6 +15,7 @@ from dmm.cli.review import app as review_app
 from dmm.cli.usage import app as usage_app
 from dmm.cli.write import app as write_app
 from dmm.cli.conflicts import app as conflicts_app
+from dmm.cli.claude import claude_app
 from dmm.core.constants import DEFAULT_HOST, DEFAULT_PORT, get_memory_root
 
 console = Console()
@@ -38,6 +39,8 @@ app.add_typer(usage_app, name="usage")
 
 # Phase 3: Conflict detection commands
 app.add_typer(conflicts_app, name="conflicts")
+# Phase 4: Claude Code integration commands
+app.add_typer(claude_app, name="claude")
 
 
 @app.command("status")

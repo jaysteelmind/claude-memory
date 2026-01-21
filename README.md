@@ -162,13 +162,59 @@ Edit `.dmm/daemon.config.json`:
 
 ## Claude Code Integration
 
-Use the wrapper script to automatically start/stop the daemon:
+DMM integrates seamlessly with Claude Code through the `CLAUDE.md` project instruction file.
+
+### Automatic Setup
+
+When Claude Code starts in a directory with `CLAUDE.md`, it automatically:
+1. Learns that DMM is available
+2. Understands how to start the daemon
+3. Knows all available commands
+4. Follows the operational guidelines in `.dmm/BOOT.md`
+
+### Using the Wrapper Script
+
+For automatic daemon lifecycle management:
 ```bash
-# Add to your PATH
+# Add to your shell profile
 export PATH="/path/to/claude-memory/bin:$PATH"
 
-# Run Claude Code with DMM
+# Start Claude Code with DMM
 claude-code-dmm
+```
+
+The wrapper script:
+- Starts DMM daemon before Claude Code launches
+- Waits for daemon health check
+- Stops daemon automatically when Claude Code exits
+
+### Manual Setup
+
+If not using the wrapper:
+```bash
+# Terminal 1: Start daemon
+cd /your/project
+dmm daemon start
+
+# Terminal 2: Run Claude Code
+claude  # or your IDE
+
+# When done
+dmm daemon stop
+```
+
+### Verifying Integration
+```bash
+# Check integration status
+dmm claude check
+
+# Expected output shows status of:
+# - CLAUDE.md presence
+# - .dmm/BOOT.md (Phase 3)
+# - .dmm/policy.md
+# - Daemon status
+# - Wrapper script
+# - Memory directory
 ```
 
 ## Development
