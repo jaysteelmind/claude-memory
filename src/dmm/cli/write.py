@@ -233,7 +233,7 @@ def list_proposals(
     limit: int = typer.Option(20, "--limit", "-n", help="Maximum number to show"),
 ) -> None:
     """List write proposals."""
-    _, queue, _ = get_components()
+    _,queue, _, _, _ = get_components()
     
     if status:
         try:
@@ -274,7 +274,7 @@ def show_proposal(
     proposal_id: str = typer.Argument(..., help="Proposal ID to show"),
 ) -> None:
     """Show details of a specific proposal."""
-    _, queue, _ = get_components()
+    _,queue, _, _, _ = get_components()
     
     proposal = queue.get(proposal_id)
     if not proposal:
@@ -319,7 +319,7 @@ def cancel_proposal(
 @app.command("stats")
 def show_stats() -> None:
     """Show write proposal statistics."""
-    _, queue, _ = get_components()
+    _,queue, _, _, _ = get_components()
     
     stats = queue.get_stats()
     

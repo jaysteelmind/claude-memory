@@ -9,11 +9,13 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver as Observer
+import logging
+
+logger = logging.getLogger(__name__)
 
 from dmm.core.constants import MEMORY_FILE_EXTENSION
 from dmm.core.exceptions import WatcherError
-
 
 class ChangeType(str, Enum):
     """Type of file system change."""
@@ -21,7 +23,6 @@ class ChangeType(str, Enum):
     CREATED = "created"
     MODIFIED = "modified"
     DELETED = "deleted"
-
 
 @dataclass
 class ChangeEvent:
@@ -35,7 +36,6 @@ class ChangeEvent:
     def is_memory_file(self) -> bool:
         """Check if this is a memory markdown file."""
         return self.path.suffix == MEMORY_FILE_EXTENSION
-
 
 class DebouncedHandler(FileSystemEventHandler):
     """File system event handler with debouncing."""
@@ -134,7 +134,6 @@ class DebouncedHandler(FileSystemEventHandler):
                 timer.cancel()
             self._pending.clear()
 
-
 class MemoryWatcher:
     """Watches memory directory for file changes."""
 
@@ -177,10 +176,12 @@ class MemoryWatcher:
     def _sync_callback(self, event: ChangeEvent) -> None:
         """Sync callback that schedules async callback."""
         if self._loop is not None and self._running:
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 self._on_change(event),
                 self._loop,
             )
+        else:
+            pass  # Loop not available or not running
 
     async def start(self) -> None:
         """Start watching for changes."""
@@ -193,7 +194,7 @@ class MemoryWatcher:
                 details={"path": str(self._memory_root)},
             )
 
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
 
         self._handler = DebouncedHandler(
             callback=self._sync_callback,
@@ -201,7 +202,7 @@ class MemoryWatcher:
             ignore_patterns=self._ignore_patterns,
         )
 
-        self._observer = Observer()
+        self._observer = Observer(timeout=1.0)  # Poll every 1 second
         self._observer.schedule(
             self._handler,
             str(self._memory_root),
@@ -211,6 +212,7 @@ class MemoryWatcher:
         try:
             self._observer.start()
             self._running = True
+
         except Exception as e:
             raise WatcherError(
                 f"Failed to start file watcher: {e}",

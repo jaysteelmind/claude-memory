@@ -207,7 +207,7 @@ class SemanticClusteringAnalyzer:
         all_memories = self._store.get_all_memories()
         
         if self._config.ignore_deprecated:
-            all_memories = [m for m in all_memories if m.status.value != "deprecated"]
+            all_memories = [m for m in all_memories if m.status != "deprecated"]
         
         return all_memories
 
@@ -383,7 +383,7 @@ class SemanticClusteringAnalyzer:
             signals.append(f"Memory 2 contains: {', '.join(sorted(only_in_2))}")
         
         if m1.scope != m2.scope:
-            signals.append(f"Different scopes: {m1.scope.value} vs {m2.scope.value}")
+            signals.append(f"Different scopes: {m1.scope} vs {m2.scope}")
         
         if abs(m1.priority - m2.priority) > 0.3:
             signals.append(f"Priority difference: {m1.priority} vs {m2.priority}")

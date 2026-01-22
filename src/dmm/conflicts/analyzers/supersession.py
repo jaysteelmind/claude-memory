@@ -118,7 +118,7 @@ class SupersessionChainAnalyzer:
         if target_memory.supersedes:
             for target_id in target_memory.supersedes:
                 target = memory_map.get(target_id)
-                if target and target.status.value == "active":
+                if target and target.status == "active":
                     candidates.append(ConflictCandidate(
                         memory_ids=(memory_id, target_id),
                         detection_method=DetectionMethod.SUPERSESSION_CHAIN,
@@ -135,7 +135,7 @@ class SupersessionChainAnalyzer:
             superseding_ids = superseded_by[memory_id]
             active_superseding = [
                 mid for mid in superseding_ids
-                if memory_map.get(mid) and memory_map[mid].status.value == "active"
+                if memory_map.get(mid) and memory_map[mid].status == "active"
             ]
             if len(active_superseding) > 1:
                 candidates.append(ConflictCandidate(
@@ -218,7 +218,7 @@ class SupersessionChainAnalyzer:
         candidates = []
         
         for memory in memories:
-            if memory.status.value == "deprecated":
+            if memory.status == "deprecated":
                 continue
             
             if memory.id not in supersedes_map:
@@ -226,7 +226,7 @@ class SupersessionChainAnalyzer:
             
             for target_id in supersedes_map[memory.id]:
                 target = memory_map.get(target_id)
-                if target and target.status.value == "active":
+                if target and target.status == "active":
                     candidates.append(ConflictCandidate(
                         memory_ids=(memory.id, target_id),
                         detection_method=DetectionMethod.SUPERSESSION_CHAIN,
@@ -258,7 +258,7 @@ class SupersessionChainAnalyzer:
             
             active_superseding = [
                 mid for mid in superseding_ids
-                if memory_map.get(mid) and memory_map[mid].status.value == "active"
+                if memory_map.get(mid) and memory_map[mid].status == "active"
             ]
             
             if len(active_superseding) > 1:
@@ -358,7 +358,7 @@ class SupersessionChainAnalyzer:
         candidates = []
         
         for memory in memories:
-            if memory.status.value != "deprecated":
+            if memory.status != "deprecated":
                 continue
             
             if memory.id not in supersedes_map:
@@ -366,7 +366,7 @@ class SupersessionChainAnalyzer:
             
             for target_id in supersedes_map[memory.id]:
                 target = memory_map.get(target_id)
-                if target and target.status.value == "active":
+                if target and target.status == "active":
                     candidates.append(ConflictCandidate(
                         memory_ids=(memory.id, target_id),
                         detection_method=DetectionMethod.SUPERSESSION_CHAIN,

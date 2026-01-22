@@ -275,7 +275,7 @@ class ConflictDetector:
         
         all_memories = self._memory_store.get_all_memories()
         if self._config.ignore_deprecated:
-            all_memories = [m for m in all_memories if m.status.value != "deprecated"]
+            all_memories = [m for m in all_memories if m.status != "deprecated"]
         
         for memory in all_memories:
             shared_tags = set(tags) & set(memory.tags)
@@ -338,7 +338,7 @@ class ConflictDetector:
         
         memories = self._memory_store.get_all_memories()
         if self._config.ignore_deprecated:
-            memories = [m for m in memories if m.status.value != "deprecated"]
+            memories = [m for m in memories if m.status != "deprecated"]
         
         memory_ids = [m.id for m in memories]
         
@@ -433,7 +433,7 @@ class ConflictDetector:
             m2 = memory_map.get(m2_id)
             
             if m1 and m2:
-                if m1.scope.value == "ephemeral" and m2.scope.value == "ephemeral":
+                if m1.scope == "ephemeral" and m2.scope == "ephemeral":
                     continue
             
             filtered.append(candidate)

@@ -411,7 +411,7 @@ class ConflictResolver:
             logger.warning(f"Memory not found for deprecation: {memory_id}")
             return False
         
-        if memory.status.value == "deprecated":
+        if memory.status == "deprecated":
             logger.info(f"Memory already deprecated: {memory_id}")
             return True
         

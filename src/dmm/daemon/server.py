@@ -30,6 +30,7 @@ from dmm.indexer.indexer import Indexer
 from dmm.retrieval.assembler import ContextAssembler
 from dmm.retrieval.baseline import BaselineManager
 from dmm.retrieval.router import RetrievalConfig, RetrievalRouter
+from dmm.writeback.usage import UsageTracker
 
 
 # Pydantic models for API
@@ -64,6 +65,7 @@ class DaemonState:
         self.health: HealthChecker = HealthChecker()
         self.base_path: Path = Path.cwd()
         self.start_time: datetime | None = None
+        self.usage_tracker: UsageTracker | None = None
 
 
 state = DaemonState()
@@ -112,6 +114,10 @@ async def startup() -> None:
     )
 
     state.assembler = ContextAssembler()
+    
+    # Initialize usage tracker
+    state.usage_tracker = UsageTracker(state.base_path)
+    state.usage_tracker.initialize()
 
     # Update health stats
     memory_root = get_memory_root(state.base_path)
@@ -253,6 +259,27 @@ async def query(request: QueryRequestModel) -> JSONResponse:
             stats=stats,
             success=True,
         )
+
+        # Log usage for analytics
+        if state.usage_tracker:
+            try:
+                retrieved_ids = [e.path for e in retrieval_result.entries]
+                state.usage_tracker.log_query(
+                    query_text=request.query,
+                    budget=request.budget,
+                    baseline_budget=request.baseline_budget,
+                    baseline_files=len(baseline_pack.entries),
+                    retrieved_files=len(retrieval_result.entries),
+                    total_tokens=pack.total_tokens,
+                    retrieved_memory_ids=retrieved_ids,
+                    scope_filter=request.scope_filter,
+                    query_time_ms=total_time,
+                    embedding_time_ms=embed_time,
+                    retrieval_time_ms=retrieve_time,
+                    assembly_time_ms=assemble_time,
+                )
+            except Exception:
+                pass  # Usage logging should not break queries
 
         return JSONResponse(content=response.to_dict())
 
