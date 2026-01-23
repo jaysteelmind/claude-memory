@@ -1,128 +1,153 @@
-"""DMM Knowledge Graph Module.
+"""
+DMM Knowledge Graph Module.
 
-This module provides the knowledge graph infrastructure for DMM,
-enabling rich relationships between memories, tags, scopes, and concepts.
+Provides a living knowledge graph for modeling relationships between
+memories. The graph enables semantic navigation, contradiction detection,
+dependency tracking, and enhanced context retrieval.
 
-Main components:
-- KnowledgeGraphStore: Primary interface for graph operations
-- Node classes: MemoryNode, TagNode, ScopeNode, ConceptNode
-- Edge classes: RelatesTo, Supersedes, Contradicts, Supports, etc.
-- Migration: Tools to populate graph from existing memories
-- Queries: High-level query functions
+Phase 5.1 Components (Foundation):
+- KnowledgeGraphStore: Kuzu-based graph database backend
+- MemoryNode: Node representation for memories
+- Edge types: RelatesTo, Supports, Contradicts, DependsOn, Supersedes
+- GraphMigration: Schema migration management
 
-Example usage:
-    from dmm.graph import KnowledgeGraphStore, MemoryNode
-
-    store = KnowledgeGraphStore(Path(".dmm/index/knowledge.kuzu"))
-    store.initialize()
-
-    # Create a memory node
-    node = MemoryNode(
-        id="mem_2026_01_20_001",
-        path="project/auth.md",
-        ...
-    )
-    store.upsert_memory_node(node)
-
-    # Find related memories
-    related = store.get_related_memories("mem_2026_01_20_001", max_depth=2)
+Phase 5.2 Components (Advanced Features):
+- Extractors: Tag, Semantic, Temporal, LLM-based relationship extraction
+- Retrieval: Hybrid vector+graph search with context assembly
+- Inference: Transitive closure and cluster detection
+- Visualization: Multi-format graph rendering
 """
 
+# Phase 5.1 - Foundation
 from dmm.graph.store import KnowledgeGraphStore, GraphStats
-from dmm.graph.schema import (
-    initialize_schema,
-    get_schema_version,
-    get_node_tables,
-    get_edge_tables,
-    SCHEMA_VERSION,
-)
-from dmm.graph.nodes import (
-    MemoryNode,
-    TagNode,
-    ScopeNode,
-    ConceptNode,
-    SCOPE_DEFINITIONS,
-    create_all_scope_nodes,
-)
+from dmm.graph.nodes import MemoryNode, TagNode, ScopeNode, ConceptNode
 from dmm.graph.edges import (
     Edge,
     RelatesTo,
-    Supersedes,
-    Contradicts,
     Supports,
+    Contradicts,
     DependsOn,
+    Supersedes,
     HasTag,
     InScope,
     TagCooccurs,
     About,
     Defines,
-    EdgeType,
     create_edge,
 )
-from dmm.graph.migration import (
-    GraphMigration,
-    MigrationStats,
-    migrate_from_memory_store,
+from dmm.graph.migration import GraphMigration, MigrationStats
+
+# Phase 5.2 - Extractors
+from dmm.graph.extractors.base import (
+    BaseExtractor,
+    ExtractionConfig,
+    ExtractionResult,
+    ExtractionMethod,
 )
-from dmm.graph.queries import (
-    RelatedMemoryResult,
-    TagRelationship,
+from dmm.graph.extractors.tag_extractor import TagExtractor, TagExtractionConfig
+from dmm.graph.extractors.semantic_extractor import SemanticExtractor, SemanticExtractionConfig
+from dmm.graph.extractors.temporal_extractor import TemporalExtractor, TemporalExtractionConfig
+from dmm.graph.extractors.llm_extractor import LLMExtractor, LLMExtractionConfig
+from dmm.graph.extractors.orchestrator import (
+    ExtractionOrchestrator,
+    OrchestratorConfig,
+    OrchestrationResult,
+)
+
+# Phase 5.2 - Retrieval
+from dmm.graph.retrieval.hybrid_retriever import (
+    HybridRetriever,
+    HybridRetrievalConfig,
+    RetrievalResult,
+    RetrievalStats,
+)
+from dmm.graph.retrieval.context_assembler import (
+    GraphContextAssembler,
+    ContextAssemblerConfig,
+    AssembledContext,
+)
+
+# Phase 5.2 - Inference
+from dmm.graph.inference.transitive import (
+    TransitiveInferenceEngine,
+    TransitiveConfig,
+    InferredEdge,
+    TransitiveResult,
+)
+from dmm.graph.inference.cluster import (
+    ClusterDetector,
+    ClusterConfig,
     MemoryCluster,
-    find_related_memories_weighted,
-    find_memories_by_tag_overlap,
-    get_tag_cooccurrence_graph,
-    find_potential_conflicts,
-    get_memory_context_graph,
-    compute_memory_centrality,
-    find_isolated_memories,
-    get_scope_summary,
+    ClusterResult,
+)
+
+# Phase 5.2 - Visualization
+from dmm.graph.visualization.renderer import (
+    GraphRenderer,
+    RenderConfig,
+    RenderResult,
 )
 
 __all__ = [
-    # Store
+    # Phase 5.1 - Store
     "KnowledgeGraphStore",
     "GraphStats",
-    # Schema
-    "initialize_schema",
-    "get_schema_version",
-    "get_node_tables",
-    "get_edge_tables",
-    "SCHEMA_VERSION",
-    # Nodes
+    # Phase 5.1 - Nodes
     "MemoryNode",
     "TagNode",
     "ScopeNode",
     "ConceptNode",
-    "SCOPE_DEFINITIONS",
-    "create_all_scope_nodes",
-    # Edges
+    # Phase 5.1 - Edges
     "Edge",
     "RelatesTo",
-    "Supersedes",
-    "Contradicts",
     "Supports",
+    "Contradicts",
     "DependsOn",
+    "Supersedes",
     "HasTag",
     "InScope",
     "TagCooccurs",
     "About",
     "Defines",
-    "EdgeType",
     "create_edge",
-    # Migration
+    # Phase 5.1 - Migration
     "GraphMigration",
     "MigrationStats",
-    "migrate_from_memory_store",
-    # Queries
-    "RelatedMemoryResult",
-    "TagRelationship",
+    # Phase 5.2 - Extractors
+    "BaseExtractor",
+    "ExtractionConfig",
+    "ExtractionResult",
+    "ExtractionMethod",
+    "TagExtractor",
+    "TagExtractionConfig",
+    "SemanticExtractor",
+    "SemanticExtractionConfig",
+    "TemporalExtractor",
+    "TemporalExtractionConfig",
+    "LLMExtractor",
+    "LLMExtractionConfig",
+    "ExtractionOrchestrator",
+    "OrchestratorConfig",
+    "OrchestrationResult",
+    # Phase 5.2 - Retrieval
+    "HybridRetriever",
+    "HybridRetrievalConfig",
+    "RetrievalResult",
+    "RetrievalStats",
+    "GraphContextAssembler",
+    "ContextAssemblerConfig",
+    "AssembledContext",
+    # Phase 5.2 - Inference
+    "TransitiveInferenceEngine",
+    "TransitiveConfig",
+    "InferredEdge",
+    "TransitiveResult",
+    "ClusterDetector",
+    "ClusterConfig",
     "MemoryCluster",
-    "find_related_memories_weighted",
-    "find_memories_by_tag_overlap",
-    "get_tag_cooccurrence_graph",
-    "find_potential_conflicts",
-    "get_memory_context_graph",
-    "compute_memory_centrality",
-    "find_isolated_memories",
-    "get_scope_summary",
+    "ClusterResult",
+    # Phase 5.2 - Visualization
+    "GraphRenderer",
+    "RenderConfig",
+    "RenderResult",
 ]
