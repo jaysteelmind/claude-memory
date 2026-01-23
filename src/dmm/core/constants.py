@@ -286,3 +286,41 @@ def get_conflicts_db_path(base_path: Path | None = None) -> Path:
 
 
 # =============================================================================
+
+# =============================================================================
+# Knowledge Graph Constants (Phase 5)
+# =============================================================================
+
+# Knowledge graph database directory name
+KNOWLEDGE_GRAPH_DIR: Final[str] = "knowledge.kuzu"
+
+
+def get_knowledge_graph_path(base_path: Path | None = None) -> Path:
+    """Get the path to the Kuzu knowledge graph database directory.
+
+    Args:
+        base_path: Optional base path. Defaults to current working directory.
+
+    Returns:
+        Path to the knowledge.kuzu directory within .dmm/index/.
+    """
+    return get_index_root(base_path) / KNOWLEDGE_GRAPH_DIR
+
+
+def get_graph_db_path(base_path: Path | None = None) -> Path:
+    """Alias for get_knowledge_graph_path.
+
+    Args:
+        base_path: Optional base path. Defaults to current working directory.
+
+    Returns:
+        Path to the knowledge.kuzu directory.
+    """
+    return get_knowledge_graph_path(base_path)
+
+
+# Graph operation defaults
+DEFAULT_GRAPH_TRAVERSAL_DEPTH: Final[int] = 2
+DEFAULT_MIN_TAG_COOCCURRENCE: Final[int] = 2
+DEFAULT_RELATIONSHIP_WEIGHT: Final[float] = 0.5
+TAG_COOCCURRENCE_STRENGTH_DIVISOR: Final[float] = 10.0

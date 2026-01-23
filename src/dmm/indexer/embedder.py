@@ -206,7 +206,7 @@ class MemoryEmbedder:
             f"[DIRECTORY] {memory.directory}",
             f"[TITLE] {memory.title}",
             f"[TAGS] {', '.join(memory.tags)}",
-            f"[SCOPE] {memory.scope.value}",
+            f"[SCOPE] {str(memory.scope)}",
             f"[CONTENT] {memory.body}",
         ]
         return "\n".join(parts)

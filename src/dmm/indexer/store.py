@@ -207,7 +207,7 @@ class MemoryStore:
                         memory.directory,
                         memory.title,
                         memory.body,
-                        memory.scope.value,
+                        str(memory.scope),
                         memory.priority,
                         memory.confidence.value,
                         memory.status.value,

@@ -1,0 +1,190 @@
+"""Knowledge graph schema definitions for Kuzu database.
+
+This module defines the complete schema for the DMM knowledge graph including:
+- Node tables: Memory, Tag, Scope, Concept
+- Relationship tables: RELATES_TO, SUPERSEDES, CONTRADICTS, SUPPORTS, DEPENDS_ON,
+  HAS_TAG, IN_SCOPE, TAG_COOCCURS, ABOUT, DEFINES
+
+Schema version is tracked for future migrations.
+"""
+
+from typing import Final
+
+import kuzu
+
+# Schema version for tracking migrations
+SCHEMA_VERSION: Final[str] = "1.0.0"
+
+# Node table definitions using Kuzu DDL syntax
+NODE_SCHEMAS: Final[dict[str, str]] = {
+    "Memory": """
+        CREATE NODE TABLE IF NOT EXISTS Memory (
+            id STRING,
+            path STRING,
+            directory STRING,
+            title STRING,
+            scope STRING,
+            priority DOUBLE,
+            confidence STRING,
+            status STRING,
+            token_count INT64,
+            created TIMESTAMP,
+            last_used TIMESTAMP,
+            usage_count INT64,
+            file_hash STRING,
+            indexed_at TIMESTAMP,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Tag": """
+        CREATE NODE TABLE IF NOT EXISTS Tag (
+            id STRING,
+            name STRING,
+            normalized STRING,
+            usage_count INT64,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Scope": """
+        CREATE NODE TABLE IF NOT EXISTS Scope (
+            id STRING,
+            name STRING,
+            description STRING,
+            memory_count INT64,
+            token_total INT64,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Concept": """
+        CREATE NODE TABLE IF NOT EXISTS Concept (
+            id STRING,
+            name STRING,
+            definition STRING,
+            source_count INT64,
+            PRIMARY KEY (id)
+        )
+    """,
+}
+
+# Relationship table definitions using Kuzu DDL syntax
+EDGE_SCHEMAS: Final[dict[str, str]] = {
+    "RELATES_TO": """
+        CREATE REL TABLE IF NOT EXISTS RELATES_TO (
+            FROM Memory TO Memory,
+            weight DOUBLE,
+            context STRING
+        )
+    """,
+    "SUPERSEDES": """
+        CREATE REL TABLE IF NOT EXISTS SUPERSEDES (
+            FROM Memory TO Memory,
+            reason STRING,
+            superseded_at TIMESTAMP
+        )
+    """,
+    "CONTRADICTS": """
+        CREATE REL TABLE IF NOT EXISTS CONTRADICTS (
+            FROM Memory TO Memory,
+            description STRING,
+            resolution STRING
+        )
+    """,
+    "SUPPORTS": """
+        CREATE REL TABLE IF NOT EXISTS SUPPORTS (
+            FROM Memory TO Memory,
+            strength DOUBLE
+        )
+    """,
+    "DEPENDS_ON": """
+        CREATE REL TABLE IF NOT EXISTS DEPENDS_ON (
+            FROM Memory TO Memory
+        )
+    """,
+    "HAS_TAG": """
+        CREATE REL TABLE IF NOT EXISTS HAS_TAG (
+            FROM Memory TO Tag
+        )
+    """,
+    "IN_SCOPE": """
+        CREATE REL TABLE IF NOT EXISTS IN_SCOPE (
+            FROM Memory TO Scope
+        )
+    """,
+    "TAG_COOCCURS": """
+        CREATE REL TABLE IF NOT EXISTS TAG_COOCCURS (
+            FROM Tag TO Tag,
+            count INT64,
+            strength DOUBLE
+        )
+    """,
+    "ABOUT": """
+        CREATE REL TABLE IF NOT EXISTS ABOUT (
+            FROM Memory TO Concept,
+            relevance DOUBLE
+        )
+    """,
+    "DEFINES": """
+        CREATE REL TABLE IF NOT EXISTS DEFINES (
+            FROM Memory TO Concept
+        )
+    """,
+}
+
+
+def initialize_schema(conn: kuzu.Connection) -> None:
+    """Initialize the knowledge graph schema.
+
+    Creates all node and relationship tables if they do not exist.
+    This function is idempotent and safe to call multiple times.
+
+    Args:
+        conn: Active Kuzu database connection.
+
+    Raises:
+        kuzu.Error: If schema creation fails due to database issues.
+    """
+    # Create node tables first (relationships depend on them)
+    for table_name, ddl in NODE_SCHEMAS.items():
+        try:
+            conn.execute(ddl)
+        except kuzu.Error as e:
+            # Ignore "table already exists" errors for idempotency
+            error_msg = str(e).lower()
+            if "already exists" not in error_msg and "duplicate" not in error_msg:
+                raise
+
+    # Create relationship tables
+    for table_name, ddl in EDGE_SCHEMAS.items():
+        try:
+            conn.execute(ddl)
+        except kuzu.Error as e:
+            error_msg = str(e).lower()
+            if "already exists" not in error_msg and "duplicate" not in error_msg:
+                raise
+
+
+def get_schema_version() -> str:
+    """Return the current schema version.
+
+    Returns:
+        Schema version string in semver format.
+    """
+    return SCHEMA_VERSION
+
+
+def get_node_tables() -> list[str]:
+    """Return list of all node table names.
+
+    Returns:
+        List of node table names defined in the schema.
+    """
+    return list(NODE_SCHEMAS.keys())
+
+
+def get_edge_tables() -> list[str]:
+    """Return list of all edge table names.
+
+    Returns:
+        List of edge/relationship table names defined in the schema.
+    """
+    return list(EDGE_SCHEMAS.keys())
