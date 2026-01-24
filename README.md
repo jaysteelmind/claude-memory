@@ -10,7 +10,7 @@ DMM (Dynamic Markdown Memory) is a file-native memory system that gives AI agent
 
 ---
 
-## 🎯 Vision
+## Vision
 
 ```
 Traditional Agent:  [Prompt] + [Static Instructions] → [Response]
@@ -28,29 +28,29 @@ DMM Agent:          [Prompt] + [Retrieved Context] + [Graph Relationships] → [
 
 ---
 
-## 📊 Project Status
+## Project Status
 
-### ✅ Completed Phases
-
-| Phase | Name | Status | Description |
-|-------|------|--------|-------------|
-| 1 | Core Foundation | ✅ Complete | File-native storage, indexing, basic retrieval |
-| 2 | Write-Back System | ✅ Complete | AI-reviewed memory creation, quality gates |
-| 3 | Conflict Detection | ✅ Complete | Semantic conflict detection, resolution |
-| 4 | Claude Code Integration | ✅ Complete | CLAUDE.md, boot sequence, daemon |
-| 5.1 | Graph Foundation | ✅ Complete | Kuzu database, nodes, edges, schema |
-| 5.2 | Graph Intelligence | ✅ Complete | Extractors, hybrid retrieval, inference |
-
-### 🚧 In Development
+### Completed Phases
 
 | Phase | Name | Status | Description |
 |-------|------|--------|-------------|
-| 6.1 | Agent OS Foundation | 📋 Planned | Skills, Tools, Agents registries |
-| 6.2 | Agent OS Advanced | 📋 Planned | Task orchestration, multi-agent, self-modification |
+| 1 | Core Foundation | Complete | File-native storage, indexing, basic retrieval |
+| 2 | Write-Back System | Complete | AI-reviewed memory creation, quality gates |
+| 3 | Conflict Detection | Complete | Semantic conflict detection, resolution |
+| 4 | Claude Code Integration | Complete | CLAUDE.md, boot sequence, daemon |
+| 5.1 | Graph Foundation | Complete | Kuzu database, nodes, edges, schema |
+| 5.2 | Graph Intelligence | Complete | Extractors, hybrid retrieval, inference |
+
+### In Development
+
+| Phase | Name | Status | Description |
+|-------|------|--------|-------------|
+| 6.1 | Agent OS Foundation |  Planned | Skills, Tools, Agents registries |
+| 6.2 | Agent OS Advanced |  Planned | Task orchestration, multi-agent, self-modification |
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -64,7 +64,7 @@ DMM Agent:          [Prompt] + [Retrieved Context] + [Graph Relationships] → [
 │                                                                      │
 ├──────────────────────────────────────────────────────────────────────┤
 │                         INTELLIGENCE LAYER                           │
-│                              (Phase 5) ✅                            │
+│                              (Phase 5)                             │
 │                                                                      │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
 │   │ Relationship│  │   Hybrid    │  │  Inference  │  │   Graph   │ │
@@ -73,7 +73,7 @@ DMM Agent:          [Prompt] + [Retrieved Context] + [Graph Relationships] → [
 │                                                                      │
 ├──────────────────────────────────────────────────────────────────────┤
 │                          KNOWLEDGE LAYER                             │
-│                           (Phases 1-4) ✅                            │
+│                           (Phases 1-4)                             │
 │                                                                      │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
 │   │   Memory    │  │  Write-Back │  │  Conflicts  │  │  Claude   │ │
@@ -93,7 +93,7 @@ DMM Agent:          [Prompt] + [Retrieved Context] + [Graph Relationships] → [
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -145,7 +145,7 @@ dmm boot
 
 ---
 
-## 📁 Memory Structure
+## Memory Structure
 
 ### Scopes
 
@@ -395,7 +395,7 @@ message:
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Run Tests
 
@@ -414,14 +414,14 @@ poetry run pytest --cov=src/dmm --cov-report=html
 
 | Phase | Tests | Status |
 |-------|-------|--------|
-| Phases 1-4 | 67 | ✅ Passing |
-| Phase 5.1 (Graph Foundation) | 67 | ✅ Passing |
-| Phase 5.2 (Graph Intelligence) | 68 | ✅ Passing |
-| **Total** | **135** | ✅ **All Passing** |
+| Phases 1-4 | 67 | Passing |
+| Phase 5.1 (Graph Foundation) | 67 | Passing |
+| Phase 5.2 (Graph Intelligence) | 68 | Passing |
+| **Total** | **135** | **All Passing** |
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -474,7 +474,7 @@ poetry run pytest --cov=src/dmm --cov-report=html
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### Project Configuration
 
@@ -502,7 +502,7 @@ poetry run pytest --cov=src/dmm --cov-report=html
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
@@ -526,13 +526,13 @@ poetry run ruff check src/
 
 ---
 
-## 📜 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Kuzu](https://kuzudb.com/) - Embedded graph database
 - [Anthropic](https://anthropic.com/) - Claude AI
@@ -540,7 +540,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 📈 Roadmap
+## Roadmap
 
 ```
 2025 Q4                    2026 Q1                    2026 Q2
@@ -551,7 +551,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 │  1-4     │────────────▶│ Graph    │────────────▶│ Agent OS │
 │ Core     │             │ Intel.   │             │          │
 └──────────┘             └──────────┘             └──────────┘
-     ✅                       ✅                      🚧
+                                                  
 
 Future:
 ├── Federated learning between DMM instances
