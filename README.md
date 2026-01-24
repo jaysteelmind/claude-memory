@@ -1,465 +1,568 @@
-<div align="center">
-
 # DMM - Dynamic Markdown Memory
 
-### A File-Native Cognitive Memory System for AI Agents
+> **Cognitive Memory System for AI Agents**
 
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Phases](https://img.shields.io/badge/phases%201--4-complete-success)]()
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-135%20passing-brightgreen.svg)](#testing)
 
-*Persistent, semantic memory that gives AI agents context without overwhelming token budgets*
-
-**Created By: Jerome Naidoo**
-
-[Overview](#overview) • [Architecture](#architecture) • [Key Features](#key-features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation)
-
-</div>
+DMM (Dynamic Markdown Memory) is a file-native memory system that gives AI agents persistent, semantic, and graph-connected knowledge. It evolves from simple context retrieval into a full **Agent Operating System**.
 
 ---
 
-## Overview
+## 🎯 Vision
 
-Large language models operate within fixed context windows, forcing a constant tradeoff between **comprehensive context** and **token efficiency**. Current approaches either dump everything into the prompt (wasting tokens) or rely on fragile keyword matching (missing relevant context).
+```
+Traditional Agent:  [Prompt] + [Static Instructions] → [Response]
 
-**DMM** reframes AI memory as a **semantic retrieval problem** rather than a context stuffing exercise. By treating memories as atomic, typed markdown files with vector embeddings, DMM provides:
+DMM Agent:          [Prompt] + [Retrieved Context] + [Graph Relationships] → [Response]
+                                       │                      │
+                                       ▼                      ▼
+                               Semantic Match         Connected Knowledge
+```
 
-- **Relevant** — semantic search retrieves only what matters for the current task
-- **Efficient** — token budgets are respected, not exceeded
-- **Persistent** — memories survive across sessions and machines
-- **Governed** — baseline context is guaranteed, scopes control visibility
-- **Automatic** — no manual approval needed, memories commit instantly
-
-This represents production-grade memory infrastructure for AI coding assistants, formalized into a deployable system.
+**DMM transforms how AI agents access knowledge:**
+- From static prompts → dynamic, relevant context
+- From flat files → interconnected knowledge graph
+- From manual updates → self-improving memory
 
 ---
 
-## The Problem with Current Approaches
+## 📊 Project Status
 
-Most AI memory systems introduce friction or fail silently:
+### ✅ Completed Phases
 
-| Problem | Description |
-|---------|-------------|
-| **Context Overflow** | Dumping all context exhausts token budgets |
-| **Keyword Fragility** | Simple matching misses semantically related content |
-| **Session Amnesia** | Knowledge lost between conversations |
-| **Manual Overhead** | Requiring human approval for every memory |
-| **No Guarantees** | Critical context may be omitted randomly |
+| Phase | Name | Status | Description |
+|-------|------|--------|-------------|
+| 1 | Core Foundation | ✅ Complete | File-native storage, indexing, basic retrieval |
+| 2 | Write-Back System | ✅ Complete | AI-reviewed memory creation, quality gates |
+| 3 | Conflict Detection | ✅ Complete | Semantic conflict detection, resolution |
+| 4 | Claude Code Integration | ✅ Complete | CLAUDE.md, boot sequence, daemon |
+| 5.1 | Graph Foundation | ✅ Complete | Kuzu database, nodes, edges, schema |
+| 5.2 | Graph Intelligence | ✅ Complete | Extractors, hybrid retrieval, inference |
 
-DMM eliminates these problems through semantic embeddings, guaranteed baseline inclusion, and automatic memory commits.
+### 🚧 In Development
+
+| Phase | Name | Status | Description |
+|-------|------|--------|-------------|
+| 6.1 | Agent OS Foundation | 📋 Planned | Skills, Tools, Agents registries |
+| 6.2 | Agent OS Advanced | 📋 Planned | Task orchestration, multi-agent, self-modification |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-DMM operates as a **daemon-based retrieval system** with a two-stage semantic pipeline:
 ```
-Query → Embed → Stage 1 (Directory Routing) → Stage 2 (Memory Ranking) → Pack Assembly → Response
-```
-
-| Component | Purpose | Output |
-|-----------|---------|--------|
-| **Daemon** | FastAPI server with hot-reload indexing | HTTP API on port 7433 |
-| **Indexer** | Parses markdown, generates 384-dim embeddings | SQLite vector store |
-| **Retriever** | Two-stage semantic search with budget packing | Ranked memory list |
-| **Writer** | Proposes and auto-commits new memories | Atomic file creation |
-| **Reviewer** | Validates memory quality and conflicts | Quality gates |
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              DMM ARCHITECTURE                                   │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-│   │   Memory    │    │   Vector    │    │  Retrieval  │    │    Pack     │    │
-│   │   Files     │───▶│   Index     │───▶│   Pipeline  │───▶│  Assembly   │    │
-│   │             │    │             │    │             │    │             │    │
-│   │  .dmm/      │    │  SQLite +   │    │  2-Stage    │    │  Budget-    │    │
-│   │  memory/    │    │  Embeddings │    │  Semantic   │    │  Aware      │    │
-│   │             │    │             │    │  Search     │    │  Packing    │    │
-│   └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    │
-│         │                  │                  │                  │             │
-│         │                  │                  │                  │             │
-│         ▼                  ▼                  ▼                  ▼             │
-│   Markdown with      384-dim vectors     Directory →        Baseline +        │
-│   YAML frontmatter   (MiniLM-L6-v2)      Memory routing     Retrieved context │
-│                                                                                 │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│   Memory Scopes:                                                                │
-│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│   │ baseline │ │  global  │ │  agent   │ │ project  │ │ephemeral │           │
-│   │ ALWAYS   │ │ Cross-   │ │ Behavior │ │ Project- │ │ Temporary│           │
-│   │ included │ │ project  │ │ rules    │ │ specific │ │ expires  │           │
-│   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AGENT OPERATING SYSTEM                       │
+│                              (Phase 6)                               │
+│                                                                      │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
+│   │   Skills    │  │    Tools    │  │   Agents    │  │   Tasks   │ │
+│   │  Registry   │  │  Registry   │  │  Registry   │  │ Orchestr. │ │
+│   └─────────────┘  └─────────────┘  └─────────────┘  └───────────┘ │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│                         INTELLIGENCE LAYER                           │
+│                              (Phase 5) ✅                            │
+│                                                                      │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
+│   │ Relationship│  │   Hybrid    │  │  Inference  │  │   Graph   │ │
+│   │ Extractors  │  │  Retrieval  │  │   Engine    │  │    Viz    │ │
+│   └─────────────┘  └─────────────┘  └─────────────┘  └───────────┘ │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│                          KNOWLEDGE LAYER                             │
+│                           (Phases 1-4) ✅                            │
+│                                                                      │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
+│   │   Memory    │  │  Write-Back │  │  Conflicts  │  │  Claude   │ │
+│   │   System    │  │   Engine    │  │  Detector   │  │   Code    │ │
+│   └─────────────┘  └─────────────┘  └─────────────┘  └───────────┘ │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│                          STORAGE LAYER                               │
+│                                                                      │
+│   ┌───────────────────┐  ┌───────────────────┐  ┌─────────────────┐ │
+│   │  Markdown Files   │  │  SQLite + Vector  │  │   Kuzu Graph    │ │
+│   │   (Git-friendly)  │  │   (Embeddings)    │  │  (Relationships)│ │
+│   └───────────────────┘  └───────────────────┘  └─────────────────┘ │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Key Features
+## 🚀 Quick Start
 
-### Semantic Retrieval
-- **384-dimensional embeddings** using sentence-transformers (all-MiniLM-L6-v2)
-- **Two-stage search**: Directory routing → Memory ranking
-- **Cosine similarity** with priority and confidence weighting
-- **Budget-aware packing**: Never exceeds specified token limits
+### Installation
 
-### Memory Scopes
-| Scope | Purpose | Retrieval |
-|-------|---------|-----------|
-| `baseline` | Critical identity and constraints | **Always included** |
-| `global` | Cross-project standards | When relevant |
-| `agent` | Behavioral rules and style | When relevant |
-| `project` | Project-specific knowledge | When relevant |
-| `ephemeral` | Temporary context with expiration | When relevant, auto-expires |
-
-### Automatic Commits
-- **No manual approval** — memories commit instantly by default
-- **Quality validation** — frontmatter and content checks
-- **Conflict detection** — semantic similarity and tag overlap analysis
-- **Atomic writes** — all-or-nothing file creation with rollback
-
-### Claude Code Integration
-- **CLAUDE.md** — Project instructions Claude reads automatically
-- **Bootstrap script** — One-command installation on new machines
-- **Wrapper script** — `claudex` starts daemon and launches Claude
-- **Live memory** — Query and write during conversations
-
----
-
-## What Makes This Different
-
-<table>
-<tr>
-<th>Feature</th>
-<th>Typical AI Memory</th>
-<th>DMM</th>
-</tr>
-<tr>
-<td><b>Retrieval</b></td>
-<td>Keyword matching or full dump</td>
-<td>Semantic vector search</td>
-</tr>
-<tr>
-<td><b>Persistence</b></td>
-<td>Session-only or cloud-dependent</td>
-<td>Local markdown files (git-trackable)</td>
-</tr>
-<tr>
-<td><b>Token Budget</b></td>
-<td>Often exceeded or ignored</td>
-<td>Strictly enforced with packing</td>
-</tr>
-<tr>
-<td><b>Baseline Guarantee</b></td>
-<td>None</td>
-<td>Always included, never dropped</td>
-</tr>
-<tr>
-<td><b>Approval Workflow</b></td>
-<td>Manual or none</td>
-<td>Automatic with quality gates</td>
-</tr>
-<tr>
-<td><b>Multi-Machine</b></td>
-<td>Cloud sync required</td>
-<td>Git-based, works offline</td>
-</tr>
-</table>
-
----
-
-## Installation
-
-### New Machine (Full Install)
 ```bash
-# Clone repository
-git clone https://github.com/jaysteelmind/claude-memory.git ~/projects/claude-memory
+# Clone the repository
+git clone https://github.com/your-org/claude-memory.git
+cd claude-memory
 
-# Run installer
-cd ~/projects/claude-memory && ./start.sh
+# Install with Poetry
+poetry install
 
-# Use from anywhere
-claudex
+# Or with pip
+pip install -e .
 ```
 
-### Requirements
-- Python 3.11+
-- Poetry (auto-installed by bootstrap)
-- ~90MB disk for embedding model (downloaded once)
-- Claude Code (for `claudex` wrapper)
+### Initialize a Project
 
-### What `start.sh` Does
-1. Runs `bin/dmm-bootstrap` (installs Poetry, dependencies, `dmm` command)
-2. Installs `claudex` to `/usr/local/bin/`
-3. Verifies installation
+```bash
+# Initialize DMM in your project
+cd your-project
+dmm init
+
+# This creates:
+# .dmm/
+# ├── memory/
+# │   ├── baseline/
+# │   ├── global/
+# │   ├── project/
+# │   └── ephemeral/
+# ├── index/
+# └── BOOT.md
+```
+
+### Basic Usage
+
+```bash
+# Index all memories
+dmm index
+
+# Query memories
+dmm query "How does authentication work?"
+
+# Assemble context pack
+dmm assemble --tokens 4000
+
+# Boot sequence (for Claude Code)
+dmm boot
+```
 
 ---
 
-## Usage
+## 📁 Memory Structure
 
-### Start Claude Code with DMM
-```bash
-# From anywhere on your machine
-claudex
-```
+### Scopes
 
-This:
-1. Starts the DMM daemon
-2. Launches Claude Code in the project directory
-3. Stops daemon when Claude exits
+Memories are organized into hierarchical scopes:
 
-### CLI Commands
-```bash
-# Check system status
-dmm daemon status
-dmm claude check
+| Scope | Priority | Purpose | Persistence |
+|-------|----------|---------|-------------|
+| `baseline` | Highest | Core identity, principles | Permanent |
+| `global` | High | Cross-project knowledge | Long-term |
+| `agent` | Medium | Agent-specific context | Session |
+| `project` | Medium | Project-specific | Project lifetime |
+| `ephemeral` | Low | Temporary context | Short-term |
 
-# Query for relevant context
-dmm query "implement authentication" --budget 1500
+### Memory Format
 
-# Save a new memory (auto-commits)
-echo '---
-id: mem_2026_01_21_001
-tags: [api, authentication]
-scope: project
-priority: 0.8
-confidence: active
-status: active
----
-# Authentication Pattern
-Use JWT tokens with 24-hour expiration...' | dmm write propose project/auth-pattern.md --reason "Document auth approach"
-
-# Reindex after manual file changes
-dmm reindex
-
-# Check for conflicts
-dmm conflicts scan
-```
-
-### Memory File Format
 ```markdown
 ---
-id: mem_YYYY_MM_DD_NNN
-tags: [tag1, tag2]
-scope: project          # baseline|global|agent|project|ephemeral
-priority: 0.7           # 0.0-1.0, higher = more important
-confidence: active      # experimental|active|stable|deprecated
-status: active          # active|deprecated
-created: 2026-01-21
-expires: 2026-02-21     # optional, for ephemeral scope
+id: mem_abc123
+title: Authentication Best Practices
+scope: global
+tags: [security, authentication, best-practices]
+priority: 0.8
+created: 2026-01-15
+updated: 2026-01-23
 ---
-# Memory Title
 
-Content goes here. Keep memories atomic (300-800 tokens).
-Single concept per file. No undefined references.
+# Authentication Best Practices
+
+## Overview
+This document outlines security best practices for authentication...
+
+## Key Principles
+1. Always use secure password hashing (bcrypt, argon2)
+2. Implement rate limiting on login attempts
+3. Use HTTPS for all authentication endpoints
 ```
 
-### Programmatic Access
+---
+
+## 🕸️ Knowledge Graph (Phase 5)
+
+### Overview
+
+Phase 5 transforms flat memories into an interconnected knowledge structure using [Kuzu](https://kuzudb.com/), an embedded graph database.
+
+### Relationship Types
+
+| Relationship | Description | Example |
+|--------------|-------------|---------|
+| `RELATES_TO` | Topical connection | "API Design" ↔ "REST Patterns" |
+| `SUPPORTS` | Evidence/reinforcement | "Test Results" → "Design Decision" |
+| `CONTRADICTS` | Conflicting information | "Old Policy" ↔ "New Policy" |
+| `DEPENDS_ON` | Prerequisite knowledge | "OAuth Flow" → "HTTP Basics" |
+| `SUPERSEDES` | Version replacement | "API v2 Guide" → "API v1 Guide" |
+
+### Relationship Extraction
+
+DMM automatically discovers relationships using multiple extractors:
+
+```bash
+# Run extraction
+dmm graph extract
+
+# With specific extractors
+dmm graph extract --extractors tag,semantic,temporal
+
+# Dry run
+dmm graph extract --dry-run
+```
+
+**Extractors:**
+
+| Extractor | Method | Complexity |
+|-----------|--------|------------|
+| **Tag** | Jaccard similarity on tags | O(n × t) |
+| **Semantic** | Cosine similarity on embeddings | O(n² × d) |
+| **Temporal** | Version detection, time proximity | O(n) |
+| **LLM** | Deep semantic analysis | O(API calls) |
+
+### Hybrid Retrieval
+
+Combines vector similarity with graph traversal:
+
 ```python
-from dmm.retriever.pack_builder import PackBuilder
-from dmm.indexer.store import MemoryStore
-from dmm.core.config import DMMConfig
+# Retrieval formula
+combined_score = α × vector_score + (1-α) × graph_score
+# where α = 0.6 (configurable)
+```
 
-# Load configuration
-config = DMMConfig.load(Path.cwd())
-store = MemoryStore(config.index_path / "embeddings.db")
+```bash
+# Query with graph expansion
+dmm query "authentication" --graph-expand
 
-# Build a memory pack
-builder = PackBuilder(store, config)
-pack = builder.build(
-    query="implement user authentication",
-    token_budget=1500,
-)
+# Assemble with relationships
+dmm assemble --include-relationships
+```
 
-print(f"Retrieved: {len(pack.memories)} memories")
-print(f"Tokens used: {pack.total_tokens}")
+### Inference Engine
+
+Discovers implicit knowledge:
+
+```bash
+# Run all inference
+dmm graph infer
+
+# Transitive relationships (A→B→C implies A→C)
+dmm graph infer --mode transitive --apply
+
+# Detect clusters
+dmm graph infer --mode clusters
+
+# Find knowledge gaps
+dmm graph infer --mode gaps
+```
+
+### Visualization
+
+```bash
+# Interactive HTML (D3.js)
+dmm graph viz --output graph.html
+
+# Mermaid for documentation
+dmm graph viz --format mermaid --output docs/graph.md
+
+# Filter by scope
+dmm graph viz --scope global,project
+
+# Highlight clusters
+dmm graph viz --clusters
+```
+
+### Graph CLI Commands
+
+```bash
+# Status and statistics
+dmm graph status
+dmm graph extract-stats
+
+# Extraction
+dmm graph extract [--extractors tag,semantic,temporal,llm]
+                  [--memory <id>]
+                  [--dry-run]
+                  [--min-weight 0.3]
+
+# Inference
+dmm graph infer [--mode transitive|clusters|gaps|all]
+                [--apply]
+                [--min-confidence 0.5]
+
+# Visualization
+dmm graph viz [--output <path>]
+              [--format html|json|dot|mermaid]
+              [--scope <scopes>]
+              [--clusters]
 ```
 
 ---
 
-## Project Structure
+## 🤖 Agent OS (Phase 6) - Coming Soon
+
+Phase 6 transforms DMM from a memory system into a complete **Agent Operating System**.
+
+### Phase 6.1: Foundation (Planned)
+
+**Skills Registry** - Reusable agent capabilities:
+```yaml
+# .dmm/skills/core/code_review.skill.yaml
+id: skill_code_review
+name: Code Review
+inputs:
+  - name: code
+    type: string
+outputs:
+  - name: issues
+    type: array
+dependencies:
+  skills: [skill_syntax_check]
+  tools: [tool_eslint]
 ```
-claude-memory/
-├── CLAUDE.md                    # Instructions for Claude Code
-├── start.sh                     # One-command installer
-├── bin/
-│   ├── dmm-bootstrap            # Dependency installer
-│   └── claude-code-dmm          # Native wrapper script
-├── .dmm/
-│   ├── BOOT.md                  # Detailed operational instructions
-│   ├── policy.md                # Memory governance policies
-│   ├── daemon.config.json       # Daemon configuration
-│   ├── memory/                  # Memory files by scope
-│   │   ├── baseline/
-│   │   ├── global/
-│   │   ├── agent/
-│   │   ├── project/
-│   │   └── ephemeral/
-│   └── index/                   # SQLite databases
-│       ├── embeddings.db        # Vector store
-│       ├── usage.db             # Usage tracking
-│       └── conflicts.db         # Conflict records
-├── src/dmm/
-│   ├── cli/                     # Command-line interface
-│   │   ├── main.py              # CLI entry point
-│   │   ├── query.py             # Query commands
-│   │   ├── write.py             # Write commands
-│   │   ├── review.py            # Review commands
-│   │   ├── conflicts.py         # Conflict commands
-│   │   └── claude.py            # Integration check
-│   ├── core/                    # Core utilities
-│   │   ├── config.py            # Configuration loading
-│   │   ├── constants.py         # System constants
-│   │   └── exceptions.py        # Custom exceptions
-│   ├── daemon/                  # FastAPI daemon
-│   │   └── server.py
-│   ├── indexer/                 # Indexing pipeline
-│   │   ├── indexer.py           # Main indexer
-│   │   ├── embedder.py          # Embedding generation
-│   │   ├── parser.py            # Markdown parsing
-│   │   └── store.py             # SQLite storage
-│   ├── retriever/               # Retrieval pipeline
-│   │   ├── retriever.py         # Two-stage search
-│   │   └── pack_builder.py      # Budget-aware packing
-│   ├── writeback/               # Write operations
-│   │   ├── proposal.py          # Proposal handling
-│   │   ├── commit.py            # Atomic commits
-│   │   └── queue.py             # Review queue
-│   ├── reviewer/                # Quality validation
-│   │   └── agent.py             # Review agent
-│   └── conflicts/               # Conflict detection
-│       ├── detector.py          # Conflict scanner
-│       └── resolver.py          # Resolution strategies
-└── tests/                       # Test suites
-    ├── test_integration/
-    └── test_claude_integration.py
+
+**Tools Registry** - External tool integration:
+```yaml
+# .dmm/tools/cli/eslint.tool.yaml
+id: tool_eslint
+name: ESLint
+type: cli
+command:
+  template: "npx eslint {files} --format json"
 ```
+
+**Agents Registry** - Specialized personas:
+```yaml
+# .dmm/agents/reviewer.agent.yaml
+id: agent_reviewer
+name: Code Reviewer
+skills:
+  primary: [skill_code_review, skill_security_scan]
+behavior:
+  tone: professional
+  focus_areas: [code_quality, security]
+```
+
+### Phase 6.2: Advanced (Planned)
+
+**Task Orchestration:**
+```
+Task: "Review authentication module"
+         │
+         ▼
+   ┌─────────────┐
+   │   Planner   │ → Decompose into subtasks
+   └─────────────┘
+         │
+         ▼
+   ┌─────────────┐
+   │  Scheduler  │ → Prioritize, assign agents
+   └─────────────┘
+         │
+         ▼
+   ┌─────────────┐
+   │  Executor   │ → Run skills, invoke tools
+   └─────────────┘
+         │
+         ▼
+      Results
+```
+
+**Multi-Agent Communication:**
+```yaml
+message:
+  type: DELEGATE
+  sender: agent_researcher
+  recipient: agent_implementer
+  body:
+    task_id: task_implement_patterns
+    context: {...}
+```
+
+**Self-Modification Framework:**
+
+| Level | Type | Approval |
+|-------|------|----------|
+| 1 | Memory | Automatic |
+| 2 | Skill | Logged |
+| 3 | Behavior | AI Review |
+| 4 | Goal | Human Required |
 
 ---
 
-## Configuration
+## 🧪 Testing
 
-### Daemon Configuration (`.dmm/daemon.config.json`)
+### Run Tests
+
+```bash
+# All tests
+poetry run pytest
+
+# Specific phase
+poetry run pytest tests/unit/graph/
+
+# With coverage
+poetry run pytest --cov=src/dmm --cov-report=html
+```
+
+### Test Coverage
+
+| Phase | Tests | Status |
+|-------|-------|--------|
+| Phases 1-4 | 67 | ✅ Passing |
+| Phase 5.1 (Graph Foundation) | 67 | ✅ Passing |
+| Phase 5.2 (Graph Intelligence) | 68 | ✅ Passing |
+| **Total** | **135** | ✅ **All Passing** |
+
+---
+
+## 📖 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System design and data flow |
+| [PRD Phase 5.1](docs/prd-phase5-part1.md) | Graph foundation specification |
+| [PRD Phase 5.2](docs/prd-phase5-part2-completion.md) | Graph intelligence implementation |
+| [PRD Phase 6.1](docs/prd-phase6-part1.md) | Agent OS foundation |
+| [PRD Phase 6.2](docs/prd-phase6-part2.md) | Agent OS advanced features |
+
+---
+
+## 🛠️ CLI Reference
+
+### Core Commands
+
+| Command | Description |
+|---------|-------------|
+| `dmm init` | Initialize DMM in a project |
+| `dmm index` | Index all memory files |
+| `dmm query <text>` | Semantic search for memories |
+| `dmm assemble` | Assemble context pack |
+| `dmm boot` | Run boot sequence |
+
+### Write-Back Commands
+
+| Command | Description |
+|---------|-------------|
+| `dmm write propose` | Propose new memory |
+| `dmm write review` | Review pending proposals |
+| `dmm write commit` | Commit approved proposals |
+
+### Graph Commands (Phase 5)
+
+| Command | Description |
+|---------|-------------|
+| `dmm graph status` | Show graph statistics |
+| `dmm graph extract` | Extract relationships |
+| `dmm graph infer` | Run inference engine |
+| `dmm graph viz` | Generate visualization |
+| `dmm graph extract-stats` | Show extraction stats |
+
+### Agent OS Commands (Phase 6 - Planned)
+
+| Command | Description |
+|---------|-------------|
+| `dmm skill list\|show\|enable` | Manage skills |
+| `dmm tool list\|show\|check` | Manage tools |
+| `dmm agent list\|show\|match` | Manage agents |
+| `dmm task create\|run\|status` | Manage tasks |
+
+---
+
+## 🔧 Configuration
+
+### Project Configuration
+
 ```json
+// .dmm/config.json
 {
-  "host": "127.0.0.1",
-  "port": 7433,
-  "auto_reload": true,
-  "log_level": "info"
+  "embedding_model": "text-embedding-3-small",
+  "default_scope": "project",
+  "token_budget": 8000,
+  "graph": {
+    "auto_extract": true,
+    "extractors": ["tag", "temporal"],
+    "min_edge_weight": 0.3
+  }
 }
 ```
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DMM_PORT` | `7433` | Daemon port |
-| `DMM_HOST` | `127.0.0.1` | Daemon host |
-| `DMM_LOG_LEVEL` | `info` | Logging verbosity |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DMM_HOME` | Global DMM directory | `~/.dmm` |
+| `DMM_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
+| `ANTHROPIC_API_KEY` | API key for LLM features | Required for write-back |
 
 ---
 
-## Development Phases
+## 🤝 Contributing
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| **Phase 1** | Core retrieval, daemon, CLI | Complete |
-| **Phase 2** | Write-back engine, review agent | Complete |
-| **Phase 3** | Conflict detection and resolution | Complete |
-| **Phase 4** | Claude Code integration | Complete |
-| **Phase 5** | Docker deployment | Skipped |
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
----
+### Development Setup
 
-## API Reference
-
-### Daemon Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/status` | GET | Daemon status and stats |
-| `/query` | POST | Semantic memory query |
-| `/reindex` | POST | Trigger reindexing |
-
-### Query Request
-```json
-{
-  "query": "implement user authentication",
-  "budget": 1500,
-  "scopes": ["baseline", "project"],
-  "min_relevance": 0.3
-}
-```
-
-### Query Response
-```json
-{
-  "pack": "# DMM Memory Pack\n...",
-  "stats": {
-    "baseline_tokens": 160,
-    "retrieved_tokens": 593,
-    "total_tokens": 753,
-    "memories_included": 4,
-    "memories_excluded": 2
-  }
-}
-```
-
----
-
-## Troubleshooting
-
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| `dmm: command not found` | Not installed globally | Run `./bin/dmm-bootstrap` |
-| Daemon won't start | Port in use | `lsof -i :7433` and kill process |
-| Empty query results | Not indexed | Run `dmm reindex` |
-| Slow first query | Model loading | Normal, ~5s first time |
-| Permission denied | Wrapper not executable | `chmod +x /usr/local/bin/claudex` |
-
-### Debug Commands
 ```bash
-# Check daemon logs
-dmm daemon status
+# Clone and install
+git clone https://github.com/your-org/claude-memory.git
+cd claude-memory
+poetry install --with dev
 
-# Verify integration
-dmm claude check -v
+# Run tests
+poetry run pytest
 
-# Test query pipeline
-dmm query "test" --budget 500
+# Type checking
+poetry run mypy src/
 
-# Reindex all memories
-dmm reindex
+# Linting
+poetry run ruff check src/
 ```
 
 ---
 
-## Contributing
+## 📜 License
 
-Contributions are welcome:
-
-1. All code must have tests
-2. Memory format must be preserved
-3. Token budgets must be respected
-4. Documentation must accompany new features
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## License
+## 🙏 Acknowledgments
 
-MIT License — See [LICENSE](LICENSE) for details.
+- [Kuzu](https://kuzudb.com/) - Embedded graph database
+- [Anthropic](https://anthropic.com/) - Claude AI
+- [LangChain](https://langchain.com/) - LLM tooling inspiration
 
 ---
 
-<div align="center">
+## 📈 Roadmap
 
-**DMM** — *Semantic memory infrastructure for AI agents*
+```
+2025 Q4                    2026 Q1                    2026 Q2
+   │                          │                          │
+   ▼                          ▼                          ▼
+┌──────────┐             ┌──────────┐             ┌──────────┐
+│ Phase    │             │ Phase 5  │             │ Phase 6  │
+│  1-4     │────────────▶│ Graph    │────────────▶│ Agent OS │
+│ Core     │             │ Intel.   │             │          │
+└──────────┘             └──────────┘             └──────────┘
+     ✅                       ✅                      🚧
 
-**Jerome Naidoo**
+Future:
+├── Federated learning between DMM instances
+├── Active research - autonomous investigation
+├── Skill marketplace - community contributions
+├── Memory inheritance - project templates
+└── Real-time collaboration
+```
 
-Building persistent, intelligent context for the next generation of AI assistants.
+---
 
-</div>
+<p align="center">
+  <b>DMM - Making AI agents remember, reason, and improve.</b>
+</p>
