@@ -13,7 +13,7 @@ from typing import Final
 import kuzu
 
 # Schema version for tracking migrations
-SCHEMA_VERSION: Final[str] = "1.0.0"
+SCHEMA_VERSION: Final[str] = "2.0.0"
 
 # Node table definitions using Kuzu DDL syntax
 NODE_SCHEMAS: Final[dict[str, str]] = {
@@ -61,6 +61,67 @@ NODE_SCHEMAS: Final[dict[str, str]] = {
             name STRING,
             definition STRING,
             source_count INT64,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Skill": """
+        CREATE NODE TABLE IF NOT EXISTS Skill (
+            id STRING,
+            name STRING,
+            version STRING,
+            description STRING,
+            category STRING,
+            tags STRING[],
+            enabled BOOLEAN,
+            inputs_schema STRING,
+            outputs_schema STRING,
+            dependencies_json STRING,
+            tools_json STRING,
+            memory_requirements_json STRING,
+            execution_config_json STRING,
+            file_path STRING,
+            created TIMESTAMP,
+            updated TIMESTAMP,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Tool": """
+        CREATE NODE TABLE IF NOT EXISTS Tool (
+            id STRING,
+            name STRING,
+            version STRING,
+            tool_type STRING,
+            description STRING,
+            category STRING,
+            tags STRING[],
+            enabled BOOLEAN,
+            config_json STRING,
+            inputs_schema STRING,
+            outputs_schema STRING,
+            constraints_json STRING,
+            file_path STRING,
+            created TIMESTAMP,
+            updated TIMESTAMP,
+            PRIMARY KEY (id)
+        )
+    """,
+    "Agent": """
+        CREATE NODE TABLE IF NOT EXISTS Agent (
+            id STRING,
+            name STRING,
+            version STRING,
+            description STRING,
+            category STRING,
+            tags STRING[],
+            enabled BOOLEAN,
+            skills_json STRING,
+            tools_json STRING,
+            memory_config_json STRING,
+            behavior_json STRING,
+            constraints_json STRING,
+            file_path STRING,
+            created TIMESTAMP,
+            updated TIMESTAMP,
             PRIMARY KEY (id)
         )
     """,
@@ -128,6 +189,45 @@ EDGE_SCHEMAS: Final[dict[str, str]] = {
             FROM Memory TO Concept
         )
     """,
+    "REQUIRES_SKILL": """
+        CREATE REL TABLE IF NOT EXISTS REQUIRES_SKILL (
+            FROM Memory TO Skill,
+            relevance DOUBLE,
+            reason STRING
+        )
+    """,
+    "USES_TOOL": """
+        CREATE REL TABLE IF NOT EXISTS USES_TOOL (
+            FROM Skill TO Tool,
+            required BOOLEAN,
+            purpose STRING
+        )
+    """,
+    "HAS_SKILL": """
+        CREATE REL TABLE IF NOT EXISTS HAS_SKILL (
+            FROM Agent TO Skill,
+            proficiency STRING
+        )
+    """,
+    "HAS_TOOL": """
+        CREATE REL TABLE IF NOT EXISTS HAS_TOOL (
+            FROM Agent TO Tool,
+            enabled BOOLEAN
+        )
+    """,
+    "SKILL_DEPENDS_ON": """
+        CREATE REL TABLE IF NOT EXISTS SKILL_DEPENDS_ON (
+            FROM Skill TO Skill,
+            execution_order INT64
+        )
+    """,
+    "PREFERS_SCOPE": """
+        CREATE REL TABLE IF NOT EXISTS PREFERS_SCOPE (
+            FROM Agent TO Scope,
+            required BOOLEAN,
+            priority INT64
+        )
+    """
 }
 
 

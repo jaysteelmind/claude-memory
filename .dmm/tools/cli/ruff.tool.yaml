@@ -1,0 +1,60 @@
+id: tool_ruff
+name: Ruff Linter
+version: "1.0.0"
+type: cli
+description: >
+  Fast Python linter and formatter. Ruff is an extremely fast Python
+  linter, written in Rust, that can replace Flake8, isort, and more.
+category: linting
+tags:
+  - python
+  - linting
+  - formatting
+  - code-quality
+enabled: true
+
+inputs:
+  - name: files
+    type: array
+    required: true
+    description: Files or directories to lint
+  - name: fix
+    type: boolean
+    required: false
+    default: false
+    description: Automatically fix issues where possible
+  - name: format
+    type: string
+    required: false
+    default: text
+    description: Output format (text, json, github)
+    enum:
+      - text
+      - json
+      - github
+
+outputs:
+  - name: issues
+    type: array
+    description: List of linting issues found
+  - name: fixed_count
+    type: integer
+    description: Number of issues automatically fixed
+
+command:
+  template: "ruff check {files} --output-format {format}"
+  working_dir: project_root
+  shell: true
+
+availability:
+  check_command: "ruff --version"
+  required_files:
+    - "pyproject.toml"
+  platforms:
+    - linux
+    - macos
+    - windows
+
+constraints:
+  timeout_seconds: 60
+  max_retries: 1

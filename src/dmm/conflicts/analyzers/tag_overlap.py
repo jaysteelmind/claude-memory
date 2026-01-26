@@ -153,7 +153,7 @@ class TagOverlapAnalyzer:
         all_memories = self._store.get_all_memories()
         
         if self._config.ignore_deprecated:
-            all_memories = [m for m in all_memories if m.status != "deprecated"]
+            all_memories = [m for m in all_memories if m.status.value != "deprecated"]
         
         return all_memories
 

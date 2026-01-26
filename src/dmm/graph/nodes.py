@@ -346,3 +346,310 @@ def create_all_scope_nodes() -> list[ScopeNode]:
         project, ephemeral, and deprecated scopes.
     """
     return [ScopeNode.from_scope_name(name) for name in SCOPE_DEFINITIONS]
+
+
+@dataclass
+class SkillNode:
+    """Represents a skill in the knowledge graph.
+
+    Skills are reusable agent capabilities with defined inputs, outputs,
+    dependencies, and tool requirements.
+
+    Attributes:
+        id: Unique identifier in format skill_{name}.
+        name: Human-readable skill name.
+        version: Semantic version string.
+        description: Detailed description of the skill.
+        category: Skill category (quality, generation, analysis, etc.).
+        tags: List of semantic tags for discovery.
+        enabled: Whether the skill is currently enabled.
+        inputs_schema: JSON-serialized input schema.
+        outputs_schema: JSON-serialized output schema.
+        dependencies_json: JSON-serialized skill dependencies.
+        tools_json: JSON-serialized tool requirements.
+        memory_requirements_json: JSON-serialized memory requirements.
+        execution_config_json: JSON-serialized execution configuration.
+        file_path: Path to the skill definition file.
+        created: Creation timestamp.
+        updated: Last update timestamp.
+    """
+
+    id: str
+    name: str
+    version: str
+    description: str
+    category: str
+    tags: list[str]
+    enabled: bool
+    inputs_schema: str = "{}"
+    outputs_schema: str = "{}"
+    dependencies_json: str = "{}"
+    tools_json: str = "{}"
+    memory_requirements_json: str = "{}"
+    execution_config_json: str = "{}"
+    file_path: str = ""
+    created: Optional[datetime] = None
+    updated: Optional[datetime] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for database insertion.
+
+        Returns:
+            Dictionary with all node properties suitable for Kuzu insertion.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "version": self.version,
+            "description": self.description,
+            "category": self.category,
+            "tags": self.tags,
+            "enabled": self.enabled,
+            "inputs_schema": self.inputs_schema,
+            "outputs_schema": self.outputs_schema,
+            "dependencies_json": self.dependencies_json,
+            "tools_json": self.tools_json,
+            "memory_requirements_json": self.memory_requirements_json,
+            "execution_config_json": self.execution_config_json,
+            "file_path": self.file_path,
+            "created": self.created,
+            "updated": self.updated,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SkillNode":
+        """Create SkillNode from dictionary.
+
+        Args:
+            data: Dictionary containing node properties.
+
+        Returns:
+            SkillNode instance populated from dictionary.
+        """
+        tags = data.get("tags", [])
+        if isinstance(tags, str):
+            import json
+            try:
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+        return cls(
+            id=data["id"],
+            name=data.get("name", ""),
+            version=data.get("version", "1.0.0"),
+            description=data.get("description", ""),
+            category=data.get("category", "general"),
+            tags=tags if isinstance(tags, list) else [],
+            enabled=bool(data.get("enabled", True)),
+            inputs_schema=data.get("inputs_schema", "{}"),
+            outputs_schema=data.get("outputs_schema", "{}"),
+            dependencies_json=data.get("dependencies_json", "{}"),
+            tools_json=data.get("tools_json", "{}"),
+            memory_requirements_json=data.get("memory_requirements_json", "{}"),
+            execution_config_json=data.get("execution_config_json", "{}"),
+            file_path=data.get("file_path", ""),
+            created=data.get("created"),
+            updated=data.get("updated"),
+        )
+
+
+@dataclass
+class ToolNode:
+    """Represents a tool in the knowledge graph.
+
+    Tools are external capabilities the agent can invoke: CLI commands,
+    HTTP APIs, MCP servers, or local functions.
+
+    Attributes:
+        id: Unique identifier in format tool_{name}.
+        name: Human-readable tool name.
+        version: Tool version string.
+        tool_type: Type of tool (cli, api, mcp, function).
+        description: Detailed description of the tool.
+        category: Tool category (linting, vcs, filesystem, etc.).
+        tags: List of semantic tags for discovery.
+        enabled: Whether the tool is currently enabled.
+        config_json: JSON-serialized tool-specific configuration.
+        inputs_schema: JSON-serialized input schema.
+        outputs_schema: JSON-serialized output schema.
+        constraints_json: JSON-serialized constraints (timeout, rate limit).
+        file_path: Path to the tool definition file.
+        created: Creation timestamp.
+        updated: Last update timestamp.
+    """
+
+    id: str
+    name: str
+    version: str
+    tool_type: str
+    description: str
+    category: str
+    tags: list[str]
+    enabled: bool
+    config_json: str = "{}"
+    inputs_schema: str = "{}"
+    outputs_schema: str = "{}"
+    constraints_json: str = "{}"
+    file_path: str = ""
+    created: Optional[datetime] = None
+    updated: Optional[datetime] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for database insertion.
+
+        Returns:
+            Dictionary with all node properties suitable for Kuzu insertion.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "version": self.version,
+            "tool_type": self.tool_type,
+            "description": self.description,
+            "category": self.category,
+            "tags": self.tags,
+            "enabled": self.enabled,
+            "config_json": self.config_json,
+            "inputs_schema": self.inputs_schema,
+            "outputs_schema": self.outputs_schema,
+            "constraints_json": self.constraints_json,
+            "file_path": self.file_path,
+            "created": self.created,
+            "updated": self.updated,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ToolNode":
+        """Create ToolNode from dictionary.
+
+        Args:
+            data: Dictionary containing node properties.
+
+        Returns:
+            ToolNode instance populated from dictionary.
+        """
+        tags = data.get("tags", [])
+        if isinstance(tags, str):
+            import json
+            try:
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+        return cls(
+            id=data["id"],
+            name=data.get("name", ""),
+            version=data.get("version", "1.0.0"),
+            tool_type=data.get("tool_type", "cli"),
+            description=data.get("description", ""),
+            category=data.get("category", "general"),
+            tags=tags if isinstance(tags, list) else [],
+            enabled=bool(data.get("enabled", True)),
+            config_json=data.get("config_json", "{}"),
+            inputs_schema=data.get("inputs_schema", "{}"),
+            outputs_schema=data.get("outputs_schema", "{}"),
+            constraints_json=data.get("constraints_json", "{}"),
+            file_path=data.get("file_path", ""),
+            created=data.get("created"),
+            updated=data.get("updated"),
+        )
+
+
+@dataclass
+class AgentNode:
+    """Represents an agent in the knowledge graph.
+
+    Agents are specialized personas with specific skills, tools,
+    memory preferences, and behavioral guidelines.
+
+    Attributes:
+        id: Unique identifier in format agent_{name}.
+        name: Human-readable agent name.
+        version: Agent definition version.
+        description: Detailed description of the agent.
+        category: Agent category (quality, implementation, research, etc.).
+        tags: List of semantic tags for discovery.
+        enabled: Whether the agent is currently enabled.
+        skills_json: JSON-serialized skills configuration.
+        tools_json: JSON-serialized tools configuration.
+        memory_config_json: JSON-serialized memory context preferences.
+        behavior_json: JSON-serialized behavioral guidelines.
+        constraints_json: JSON-serialized agent constraints.
+        file_path: Path to the agent definition file.
+        created: Creation timestamp.
+        updated: Last update timestamp.
+    """
+
+    id: str
+    name: str
+    version: str
+    description: str
+    category: str
+    tags: list[str]
+    enabled: bool
+    skills_json: str = "{}"
+    tools_json: str = "{}"
+    memory_config_json: str = "{}"
+    behavior_json: str = "{}"
+    constraints_json: str = "{}"
+    file_path: str = ""
+    created: Optional[datetime] = None
+    updated: Optional[datetime] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for database insertion.
+
+        Returns:
+            Dictionary with all node properties suitable for Kuzu insertion.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "version": self.version,
+            "description": self.description,
+            "category": self.category,
+            "tags": self.tags,
+            "enabled": self.enabled,
+            "skills_json": self.skills_json,
+            "tools_json": self.tools_json,
+            "memory_config_json": self.memory_config_json,
+            "behavior_json": self.behavior_json,
+            "constraints_json": self.constraints_json,
+            "file_path": self.file_path,
+            "created": self.created,
+            "updated": self.updated,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentNode":
+        """Create AgentNode from dictionary.
+
+        Args:
+            data: Dictionary containing node properties.
+
+        Returns:
+            AgentNode instance populated from dictionary.
+        """
+        tags = data.get("tags", [])
+        if isinstance(tags, str):
+            import json
+            try:
+                tags = json.loads(tags)
+            except (json.JSONDecodeError, TypeError):
+                tags = []
+        return cls(
+            id=data["id"],
+            name=data.get("name", ""),
+            version=data.get("version", "1.0.0"),
+            description=data.get("description", ""),
+            category=data.get("category", "general"),
+            tags=tags if isinstance(tags, list) else [],
+            enabled=bool(data.get("enabled", True)),
+            skills_json=data.get("skills_json", "{}"),
+            tools_json=data.get("tools_json", "{}"),
+            memory_config_json=data.get("memory_config_json", "{}"),
+            behavior_json=data.get("behavior_json", "{}"),
+            constraints_json=data.get("constraints_json", "{}"),
+            file_path=data.get("file_path", ""),
+            created=data.get("created"),
+            updated=data.get("updated"),
+        )

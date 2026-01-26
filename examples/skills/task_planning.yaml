@@ -1,0 +1,70 @@
+# Task Planning Skill
+# Decomposes complex tasks into manageable subtasks
+
+id: skill_task_planning
+name: Task Planning
+version: "1.0.0"
+description: |
+  Analyzes complex tasks and decomposes them into smaller,
+  manageable subtasks with dependencies and priorities.
+  Supports hierarchical task structures.
+
+category: planning
+tags:
+  - tasks
+  - planning
+  - decomposition
+  - workflow
+
+enabled: true
+
+inputs:
+  - name: task_description
+    type: string
+    required: true
+    description: Description of the task to decompose
+  
+  - name: max_depth
+    type: integer
+    required: false
+    default: 3
+    description: Maximum depth of task hierarchy
+  
+  - name: context
+    type: object
+    required: false
+    description: Additional context for planning
+
+outputs:
+  - name: subtasks
+    type: array
+    description: List of subtasks with dependencies
+  
+  - name: execution_order
+    type: array
+    description: Recommended order of execution
+  
+  - name: estimated_effort
+    type: string
+    description: Estimated total effort
+
+dependencies:
+  skills: []
+  tools: []
+
+memory_requirements:
+  - scope: project
+    tags:
+      - workflow
+      - process
+    required: false
+  - scope: agent
+    tags:
+      - planning-guidelines
+    required: false
+
+execution:
+  timeout_seconds: 60
+  retry_count: 2
+  retry_delay_seconds: 2
+  parallel_safe: true

@@ -145,6 +145,53 @@ dmm boot
 
 ---
 
+## Claude Code Integration
+
+DMM integrates seamlessly with Claude Code for AI-assisted development.
+
+### Automatic Setup
+
+When Claude Code starts in a DMM-enabled project, it automatically:
+
+1. Detects the `.dmm/` directory
+2. Reads `CLAUDE.md` for project instructions
+3. Starts the DMM daemon if not running
+4. Loads the baseline memory pack
+```bash
+# Claude Code automatically runs on session start:
+dmm daemon start
+dmm boot
+```
+
+### Manual Setup
+
+If automatic setup fails, manually initialize:
+```bash
+# Initialize DMM in your project
+dmm init
+
+# Start the daemon
+dmm daemon start
+
+# Verify setup
+dmm claude check
+```
+
+### Verification
+
+Verify your Claude Code integration is working:
+```bash
+# Check integration status
+dmm claude check
+
+# Expected output:
+# [OK] CLAUDE.md exists
+# [OK] .dmm/BOOT.md exists  
+# [OK] Daemon is running
+# [OK] Baseline pack loaded
+```
+
+
 ## Memory Structure
 
 ### Scopes

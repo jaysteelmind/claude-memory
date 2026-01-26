@@ -1,0 +1,77 @@
+# Report Generation Skill
+# Generates structured markdown reports from analysis results
+
+id: skill_report_generation
+name: Report Generation
+version: "1.0.0"
+description: |
+  Generates well-structured markdown reports from various inputs.
+  Supports multiple report formats including analysis reports,
+  status reports, and summary documents.
+
+category: generation
+tags:
+  - report
+  - markdown
+  - documentation
+  - output
+
+enabled: true
+
+inputs:
+  - name: title
+    type: string
+    required: true
+    description: Report title
+  
+  - name: sections
+    type: array
+    required: true
+    description: List of sections with heading and content
+  
+  - name: format
+    type: string
+    required: false
+    default: markdown
+    description: Output format (markdown, html, text)
+  
+  - name: include_toc
+    type: boolean
+    required: false
+    default: true
+    description: Whether to include table of contents
+  
+  - name: include_metadata
+    type: boolean
+    required: false
+    default: true
+    description: Whether to include generation metadata
+
+outputs:
+  - name: report
+    type: string
+    description: Generated report content
+  
+  - name: file_path
+    type: string
+    description: Path where report was saved (if saved)
+  
+  - name: word_count
+    type: integer
+    description: Total word count of report
+
+dependencies:
+  skills: []
+  tools: []
+
+memory_requirements:
+  - scope: agent
+    tags:
+      - report-templates
+    required: false
+
+execution:
+  timeout_seconds: 30
+  retry_count: 1
+  retry_delay_seconds: 1
+  parallel_safe: true

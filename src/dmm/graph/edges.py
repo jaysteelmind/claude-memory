@@ -398,6 +398,202 @@ class Defines(Edge):
 
 
 # Type alias for any edge type
+
+
+# =============================================================================
+# Phase 6 Edge Types - Agent OS
+# =============================================================================
+
+
+@dataclass
+class RequiresSkill(Edge):
+    """Edge connecting a memory to a skill it requires.
+
+    This edge indicates that a memory entry references or requires
+    a specific skill for proper interpretation or action.
+
+    Attributes:
+        from_id: Memory node ID.
+        to_id: Skill node ID.
+        relevance: How relevant the skill is (0.0 to 1.0).
+        reason: Why this skill is required.
+    """
+
+    relevance: float = 0.5
+    reason: str = ""
+    edge_type: str = field(default="REQUIRES_SKILL", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "relevance": self.relevance,
+            "reason": self.reason,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "relevance": self.relevance,
+            "reason": self.reason,
+        }
+
+
+@dataclass
+class UsesTool(Edge):
+    """Edge connecting a skill to a tool it uses.
+
+    Attributes:
+        from_id: Skill node ID.
+        to_id: Tool node ID.
+        required: Whether the tool is required or optional.
+        purpose: Description of how the tool is used.
+    """
+
+    required: bool = True
+    purpose: str = ""
+    edge_type: str = field(default="USES_TOOL", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "required": self.required,
+            "purpose": self.purpose,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "required": self.required,
+            "purpose": self.purpose,
+        }
+
+
+@dataclass
+class HasSkill(Edge):
+    """Edge connecting an agent to a skill it possesses.
+
+    Attributes:
+        from_id: Agent node ID.
+        to_id: Skill node ID.
+        proficiency: Skill proficiency level (primary, secondary).
+    """
+
+    proficiency: str = "primary"
+    edge_type: str = field(default="HAS_SKILL", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "proficiency": self.proficiency,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "proficiency": self.proficiency,
+        }
+
+
+@dataclass
+class HasTool(Edge):
+    """Edge connecting an agent to a tool it can use.
+
+    Attributes:
+        from_id: Agent node ID.
+        to_id: Tool node ID.
+        enabled: Whether the tool is currently enabled.
+    """
+
+    enabled: bool = True
+    edge_type: str = field(default="HAS_TOOL", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "enabled": self.enabled,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "enabled": self.enabled,
+        }
+
+
+@dataclass
+class SkillDependsOn(Edge):
+    """Edge connecting a skill to another skill it depends on.
+
+    Attributes:
+        from_id: Dependent skill node ID.
+        to_id: Dependency skill node ID.
+        execution_order: Order in which skills should execute.
+    """
+
+    execution_order: int = 0
+    edge_type: str = field(default="SKILL_DEPENDS_ON", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "execution_order": self.execution_order,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "execution_order": self.execution_order,
+        }
+
+
+@dataclass
+class PrefersScope(Edge):
+    """Edge connecting an agent to a preferred memory scope.
+
+    Attributes:
+        from_id: Agent node ID.
+        to_id: Scope node ID.
+        required: Whether the scope is required.
+        priority: Priority level (higher = more preferred).
+    """
+
+    required: bool = False
+    priority: int = 0
+    edge_type: str = field(default="PREFERS_SCOPE", init=False)
+
+    def to_cypher_params(self) -> dict[str, Any]:
+        """Convert to Cypher parameters."""
+        return {
+            "required": self.required,
+            "priority": self.priority,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "from_id": self.from_id,
+            "to_id": self.to_id,
+            "edge_type": self.edge_type,
+            "required": self.required,
+            "priority": self.priority,
+        }
+
+# Type alias for any edge type (Phase 5 + Phase 6)
 EdgeType = (
     RelatesTo
     | Supersedes
@@ -409,7 +605,14 @@ EdgeType = (
     | TagCooccurs
     | About
     | Defines
+    | RequiresSkill
+    | UsesTool
+    | HasSkill
+    | HasTool
+    | SkillDependsOn
+    | PrefersScope
 )
+
 
 
 def create_edge(
@@ -445,6 +648,13 @@ def create_edge(
         "TAG_COOCCURS": TagCooccurs,
         "ABOUT": About,
         "DEFINES": Defines,
+        # Phase 6 edge types
+        "REQUIRES_SKILL": RequiresSkill,
+        "USES_TOOL": UsesTool,
+        "HAS_SKILL": HasSkill,
+        "HAS_TOOL": HasTool,
+        "SKILL_DEPENDS_ON": SkillDependsOn,
+        "PREFERS_SCOPE": PrefersScope,
     }
 
     edge_class = edge_classes.get(edge_type.upper())
@@ -491,6 +701,46 @@ def create_edge(
             from_id=from_id,
             to_id=to_id,
             relevance=props.get("relevance", 0.5),
+        )
+    # Phase 6 edges
+    elif edge_type.upper() == "REQUIRES_SKILL":
+        return RequiresSkill(
+            from_id=from_id,
+            to_id=to_id,
+            relevance=props.get("relevance", 0.5),
+            reason=props.get("reason", ""),
+        )
+    elif edge_type.upper() == "USES_TOOL":
+        return UsesTool(
+            from_id=from_id,
+            to_id=to_id,
+            required=props.get("required", True),
+            purpose=props.get("purpose", ""),
+        )
+    elif edge_type.upper() == "HAS_SKILL":
+        return HasSkill(
+            from_id=from_id,
+            to_id=to_id,
+            proficiency=props.get("proficiency", "primary"),
+        )
+    elif edge_type.upper() == "HAS_TOOL":
+        return HasTool(
+            from_id=from_id,
+            to_id=to_id,
+            enabled=props.get("enabled", True),
+        )
+    elif edge_type.upper() == "SKILL_DEPENDS_ON":
+        return SkillDependsOn(
+            from_id=from_id,
+            to_id=to_id,
+            execution_order=props.get("execution_order", 0),
+        )
+    elif edge_type.upper() == "PREFERS_SCOPE":
+        return PrefersScope(
+            from_id=from_id,
+            to_id=to_id,
+            required=props.get("required", False),
+            priority=props.get("priority", 0),
         )
     else:
         # Simple edges without additional properties

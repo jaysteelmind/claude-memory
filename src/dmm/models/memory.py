@@ -74,7 +74,7 @@ class MemoryFile:
             "body": self.body,
             "token_count": self.token_count,
             "tags": self.tags,
-            "scope": str(self.scope),
+            "scope": self.scope.value,
             "priority": self.priority,
             "confidence": self.confidence.value,
             "status": self.status.value,

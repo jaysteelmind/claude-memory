@@ -1,0 +1,68 @@
+# Code Analysis Skill
+# Analyzes Python code for structure, complexity, and issues
+
+id: skill_code_analysis
+name: Code Analysis
+version: "1.0.0"
+description: |
+  Analyzes Python source code to extract structure information,
+  calculate complexity metrics, and identify potential issues.
+  Uses AST parsing for accurate code understanding.
+
+category: analysis
+tags:
+  - code
+  - python
+  - analysis
+  - ast
+  - complexity
+
+enabled: true
+
+inputs:
+  - name: file_path
+    type: string
+    required: true
+    description: Path to the Python file to analyze
+  
+  - name: include_metrics
+    type: boolean
+    required: false
+    default: true
+    description: Whether to include complexity metrics
+  
+  - name: include_issues
+    type: boolean
+    required: false
+    default: true
+    description: Whether to detect potential issues
+
+outputs:
+  - name: structure
+    type: object
+    description: Code structure (classes, functions, imports)
+  
+  - name: metrics
+    type: object
+    description: Complexity metrics (cyclomatic, cognitive, LOC)
+  
+  - name: issues
+    type: array
+    description: List of detected issues with severity
+
+dependencies:
+  skills: []
+  tools: []
+
+memory_requirements:
+  - scope: project
+    tags:
+      - coding-standards
+      - python
+    required: false
+
+execution:
+  timeout_seconds: 30
+  retry_count: 1
+  retry_delay_seconds: 1
+  parallel_safe: true

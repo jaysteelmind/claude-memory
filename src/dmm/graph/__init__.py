@@ -20,7 +20,7 @@ Phase 5.2 Components (Advanced Features):
 
 # Phase 5.1 - Foundation
 from dmm.graph.store import KnowledgeGraphStore, GraphStats
-from dmm.graph.nodes import MemoryNode, TagNode, ScopeNode, ConceptNode
+from dmm.graph.nodes import MemoryNode, TagNode, ScopeNode, ConceptNode, SkillNode, ToolNode, AgentNode
 from dmm.graph.edges import (
     Edge,
     RelatesTo,
@@ -33,6 +33,13 @@ from dmm.graph.edges import (
     TagCooccurs,
     About,
     Defines,
+    # Phase 6 edges
+    RequiresSkill,
+    UsesTool,
+    HasSkill,
+    HasTool,
+    SkillDependsOn,
+    PrefersScope,
     create_edge,
 )
 from dmm.graph.migration import GraphMigration, MigrationStats
@@ -97,6 +104,10 @@ __all__ = [
     "TagNode",
     "ScopeNode",
     "ConceptNode",
+    # Phase 6 - Nodes
+    "SkillNode",
+    "ToolNode",
+    "AgentNode",
     # Phase 5.1 - Edges
     "Edge",
     "RelatesTo",
@@ -109,6 +120,13 @@ __all__ = [
     "TagCooccurs",
     "About",
     "Defines",
+    # Phase 6 - Edges
+    "RequiresSkill",
+    "UsesTool",
+    "HasSkill",
+    "HasTool",
+    "SkillDependsOn",
+    "PrefersScope",
     "create_edge",
     # Phase 5.1 - Migration
     "GraphMigration",

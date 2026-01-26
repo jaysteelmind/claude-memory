@@ -1,348 +1,83 @@
 # Project Instructions for Claude
 
-This project uses **DMM (Dynamic Markdown Memory)** - a file-native cognitive memory
-system that provides relevant context for your tasks without loading everything
-into the context window.
+This project uses **DMM (Dynamic Markdown Memory)** for persistent, semantic memory.
 
-## First-Time Setup (Bootstrap)
+## Quick Reference
 
-**Before using DMM commands, verify the system is installed and running.**
-
-### Step 1: Check if DMM is available
+### Before Starting Any Task
 ```bash
-dmm --version
-```
+# Ensure daemon is running (auto-starts if needed)
+dmm status
 
-If this command fails (command not found), run the bootstrap installer:
-```bash
-./bin/dmm-bootstrap
-```
-
-This will:
-- Install Poetry (if needed)
-- Install all DMM dependencies
-- Install the `dmm` command globally
-- Initialize the `.dmm` directory (if needed)
-
-### Step 2: Start the DMM Daemon
-```bash
-dmm daemon start
-```
-
-### Step 3: Verify the System
-```bash
-dmm claude check
-```
-
-You should see "Integration: READY" with all components showing "found" or "running".
-
----
-
-**Once setup is complete, proceed to Quick Start below.**
-
----
-
-## Quick Start
-
-### 1. Check if DMM daemon is running
-```bash
-dmm daemon status
-```
-
-### 2. Start the daemon if needed
-```bash
-dmm daemon start
-```
-
-### 3. Query for relevant context
-```bash
+# Query for relevant context
 dmm query "your task description" --budget 1500
 ```
 
-## DMM Overview
+### Memory Operations
 
-DMM stores knowledge as atomic markdown files (300-800 tokens each) organized by scope:
+| Command | Purpose |
+|---------|---------|
+| `dmm query "topic"` | Retrieve relevant memories |
+| `dmm remember "text"` | Quick memory creation |
+| `dmm forget <id>` | Deprecate a memory |
+| `dmm status` | System health check |
 
-| Scope | Purpose | Retrieval |
-|-------|---------|-----------|
-| baseline | Critical context (identity, constraints) | Always included |
-| global | Cross-project standards | When relevant |
-| agent | Your behavioral rules | When relevant |
-| project | Project-specific decisions | When relevant |
-| ephemeral | Temporary findings | When relevant, may expire |
-
-## Essential Commands
-
-### Memory Retrieval
-```bash
-# Basic query
-dmm query "implement authentication"
-
-# With custom token budget
-dmm query "database schema design" --budget 2000
-
-# Filter by scope
-dmm query "API patterns" --scope project
-```
-
-### Memory Writing
+### Writing Memories
 ```bash
 # Propose new memory
-dmm write propose project/decisions/api_versioning.md \
-  --reason "Document API versioning strategy"
+dmm write propose <scope>/<category>/<name>.md --reason "Why this matters"
 
-# Propose update to existing memory
-dmm write update <memory_id> --reason "Update with new findings"
-
-# Propose deprecation
-dmm write deprecate <memory_id> --reason "Superseded by newer decision"
-
-# Propose scope promotion
-dmm write promote <memory_id> --new-scope global --reason "Applies globally"
-```
-
-### Review Process
-```bash
-# List pending proposals
+# Review pending proposals
 dmm review list
-
-# Show proposal details
-dmm review show <proposal_id>
-
-# Approve a proposal
-dmm review approve <proposal_id>
-
-# Reject with feedback
-dmm review reject <proposal_id> --reason "Needs more rationale"
-
-# Process next pending (interactive)
 dmm review process
 ```
 
-### Conflict Management
-```bash
-# List unresolved conflicts
-dmm conflicts list
+## Memory Scopes
 
-# Show conflict details
-dmm conflicts show <conflict_id>
+| Scope | Purpose | Retrieval |
+|-------|---------|-----------|
+| `baseline` | Critical context (identity, constraints) | Always included |
+| `global` | Cross-project standards | When relevant |
+| `agent` | Behavioral rules | When relevant |
+| `project` | Project-specific decisions | When relevant |
+| `ephemeral` | Temporary findings | Auto-expires |
 
-# Run conflict scan
-dmm conflicts scan
+## Token Budgets
 
-# Resolve a conflict
-dmm conflicts resolve <conflict_id> --action deprecate --target <memory_id>
-```
-
-### System Management
-```bash
-# Check system status
-dmm status
-
-# Reindex all memories
-dmm reindex
-
-# Validate memory files
-dmm validate
-
-# View usage statistics
-dmm usage stats
-
-# Check daemon status
-dmm daemon status
-
-# Start daemon
-dmm daemon start
-
-# Stop daemon
-dmm daemon stop
-```
-
-## Operational Guidelines
-
-For detailed operational rules, read:
-
-- `.dmm/BOOT.md` - Complete instructions for memory operations
-- `.dmm/policy.md` - Policies for retrieval, writing, and conflict handling
-
-## When to Use DMM
-
-### DO Query Memory When:
-
-- Starting a new task (beyond baseline context)
-- Switching to a different domain or subsystem
-- Encountering unexpected behavior or failures
-- Before producing final deliverables
-- Unsure about project conventions or constraints
-
-### DO Write Memory When:
-
-- Making architectural decisions with rationale
-- Discovering patterns that should be reused
-- Establishing new constraints or conventions
-- Finding information that will be needed again
-
-### DO NOT:
-
-- Assume memories exist without querying
-- Query for information already in baseline
-- Ignore constraints from retrieved memories
-- Silently choose between conflicting memories (flag them instead)
-
-## Token Budget Guidelines
-
-| Task Type | Recommended Budget |
-|-----------|-------------------|
+| Task Type | Budget |
+|-----------|--------|
 | Quick question | 1000 |
 | Standard task | 1500 |
 | Complex task | 2000 |
-| Multi-domain work | 2500 |
+| Multi-domain | 2500 |
 
-Baseline always uses ~800 tokens (reserved).
+Baseline reserves ~800 tokens automatically.
 
-## Wrapper Script
+## Operational Rules
 
-For automatic daemon lifecycle management:
-```bash
-# Add to PATH
-export PATH="/path/to/project/bin:$PATH"
+1. **Query before assuming** - Always check memory for project conventions
+2. **Write when learning** - Capture decisions, patterns, and constraints
+3. **Flag conflicts** - Do not silently choose between contradictory memories
+4. **Respect constraints** - Retrieved memories may contain hard constraints
 
-# Run Claude Code with automatic DMM daemon management
-claude-code-dmm
-```
+## Detailed Documentation
 
-This wrapper:
-1. Starts DMM daemon before Claude Code
-2. Waits for health check
-3. Stops daemon when Claude Code exits
+- `.dmm/BOOT.md` - Full operational instructions
+- `.dmm/policy.md` - Memory policies and guidelines
 
 ## Troubleshooting
-
-### Daemon won't start
 ```bash
-# Check if port is in use
-lsof -i :7433
+# Daemon issues
+dmm daemon status
+dmm daemon start
 
-# Check for stale PID file
-cat /tmp/dmm.pid
-rm /tmp/dmm.pid  # if stale
-
-# Start with verbose output
-dmm daemon start --foreground
-```
-
-### Query returns no results
-```bash
-# Verify memories are indexed
-dmm status
-
-# Force reindex
+# Reindex memories
 dmm reindex
 
-# Check memory directory
-ls -la .dmm/memory/
+# Check for conflicts
+dmm conflicts list
 ```
-
-### Conflicts detected
-```bash
-# View conflict details
-dmm conflicts show <conflict_id>
-
-# See all unresolved
-dmm conflicts list --status unresolved
-```
-
-## File Locations
-
-| File | Purpose |
-|------|---------|
-| `.dmm/BOOT.md` | Detailed operational instructions |
-| `.dmm/policy.md` | Memory policies and guidelines |
-| `.dmm/daemon.config.json` | Daemon configuration |
-| `.dmm/memory/` | Memory file storage |
-| `.dmm/index/` | Embeddings and metadata databases |
 
 ---
 
-## Memory Migration (First Run on Existing Machines)
-
-**If this machine has been used with Claude Code before, there may be existing memory files that should be imported into DMM.**
-
-### Step 1: Search for Existing Memory Files
-```bash
-# Find all CLAUDE.md files (excluding this project)
-find ~ -name "CLAUDE.md" -not -path "*/claude-memory/*" 2>/dev/null
-
-# Find all .md files in common Claude memory locations
-find ~ -path "*/.claude/*" -name "*.md" 2>/dev/null
-find ~ -name "MEMORY.md" 2>/dev/null
-find ~ -name "*memory*.md" 2>/dev/null
-```
-
-### Step 2: Import Each File into DMM
-
-For each file found, read its contents and create a DMM memory:
-```bash
-# Read the file content
-cat /path/to/found/file.md
-
-# Create a new DMM memory with proper format
-dmm write propose project/migrated/<descriptive_name>.md --reason "Migrated from legacy memory file"
-```
-
-**When creating the memory, ensure it has:**
-- Proper YAML frontmatter (id, tags, scope, priority, confidence, status)
-- Token count between 300-800 (split large files if needed)
-- Single concept per file
-- Clear H1 title
-
-**Example frontmatter for migrated memories:**
-```yaml
----
-id: mem_YYYY_MM_DD_NNN
-tags: [migrated, <relevant-tags>]
-scope: project
-priority: 0.6
-confidence: active
-status: active
-created: YYYY-MM-DD
----
-```
-
-### Step 3: Verify Import
-```bash
-# Query to confirm the memory is accessible
-dmm query "topic from the migrated file"
-```
-
-### Step 4: Delete Original After Successful Import
-
-Only after confirming the memory is in DMM:
-```bash
-rm /path/to/original/file.md
-```
-
-### Automated Migration Command
-
-To migrate a single file:
-```bash
-# Read, import, verify, delete workflow
-FILE="/path/to/old/memory.md"
-dmm write propose project/migrated/$(basename "$FILE") --reason "Migrated from $FILE"
-# After approval and commit:
-dmm query "content from file"  # Verify
-rm "$FILE"  # Delete original
-```
-
-### Migration Checklist
-
-- [ ] Searched for CLAUDE.md files outside this project
-- [ ] Searched for .md files in ~/.claude/
-- [ ] Searched for MEMORY.md files
-- [ ] Imported all relevant memories into DMM
-- [ ] Verified imports with dmm query
-- [ ] Deleted original files
-
----
-
-**Once migration is complete, all memories are consolidated in DMM and accessible via `dmm query`.**
+*Generated by DMM Bootstrap - 2026-01-26T11:39:24.874334*

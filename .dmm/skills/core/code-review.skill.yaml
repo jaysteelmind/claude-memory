@@ -1,0 +1,80 @@
+id: skill_code_review
+name: Code Review
+version: "1.0.0"
+description: >
+  Performs comprehensive code review focusing on code quality,
+  best practices, potential bugs, and maintainability issues.
+category: quality
+tags:
+  - code-review
+  - quality
+  - best-practices
+  - bugs
+enabled: true
+
+inputs:
+  - name: code
+    type: string
+    required: true
+    description: The code to review
+  - name: language
+    type: string
+    required: false
+    default: auto
+    description: Programming language (auto-detected if not specified)
+  - name: focus_areas
+    type: array
+    required: false
+    description: Specific areas to focus on (e.g., security, performance)
+
+outputs:
+  - name: issues
+    type: array
+    description: List of identified issues with severity and location
+  - name: suggestions
+    type: array
+    description: List of improvement suggestions
+  - name: summary
+    type: string
+    description: Overall review summary
+
+dependencies:
+  skills: []
+  tools:
+    required: []
+    optional:
+      - tool_ruff
+      - tool_eslint
+
+memory_requirements:
+  required:
+    - scope: project
+      tags:
+        - coding-standards
+      description: Project coding standards and conventions
+  optional:
+    - scope: user
+      tags:
+        - preferences
+      description: User preferences for code style
+
+execution:
+  timeout_seconds: 120
+  retry_count: 2
+  parallel_safe: true
+
+examples:
+  - name: Python function review
+    input:
+      code: |
+        def calculate(x, y):
+            return x + y
+      language: python
+    output:
+      issues:
+        - severity: info
+          message: Consider adding type hints
+          line: 1
+      suggestions:
+        - Add docstring describing function purpose
+      summary: Basic function, consider adding documentation

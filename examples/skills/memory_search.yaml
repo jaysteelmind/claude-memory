@@ -1,0 +1,73 @@
+# Memory Search Skill
+# Searches and retrieves relevant memories from the DMM system
+
+id: skill_memory_search
+name: Memory Search
+version: "1.0.0"
+description: |
+  Searches the DMM memory system for relevant memories using
+  semantic similarity, tag matching, and graph traversal.
+  Supports filtering by scope, tags, and confidence levels.
+
+category: retrieval
+tags:
+  - memory
+  - search
+  - retrieval
+  - semantic
+
+enabled: true
+
+inputs:
+  - name: query
+    type: string
+    required: true
+    description: Search query or question
+  
+  - name: token_budget
+    type: integer
+    required: false
+    default: 2000
+    description: Maximum tokens to retrieve
+  
+  - name: scopes
+    type: array
+    required: false
+    description: Scopes to search (baseline, global, agent, project, ephemeral)
+  
+  - name: tags
+    type: array
+    required: false
+    description: Filter by specific tags
+  
+  - name: use_graph
+    type: boolean
+    required: false
+    default: true
+    description: Whether to use graph-enhanced retrieval
+
+outputs:
+  - name: memories
+    type: array
+    description: List of relevant memories with scores
+  
+  - name: total_tokens
+    type: integer
+    description: Total tokens in retrieved memories
+  
+  - name: graph_connections
+    type: array
+    description: Related memories found via graph traversal
+
+dependencies:
+  skills: []
+  tools:
+    - tool_dmm_cli
+
+memory_requirements: []
+
+execution:
+  timeout_seconds: 10
+  retry_count: 1
+  retry_delay_seconds: 1
+  parallel_safe: true
