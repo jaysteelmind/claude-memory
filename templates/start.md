@@ -21,15 +21,19 @@ command -v dmm && dmm --version
 
 ## Step 2: Install DMM Globally
 
-DMM needs to be installed globally at `~/.dmm-system`. Run:
+DMM needs to be installed globally at `~/.dmm-system`.
+
+**Option A: Clone and install (Recommended)**
 ```bash
-# Option A: If claude-memory repo exists locally
-if [ -d "$HOME/projects/claude-memory" ]; then
-    cd "$HOME/projects/claude-memory" && ./scripts/install.sh
-# Option B: Install from remote
-else
-    curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/install.sh | bash
-fi
+git clone https://github.com/jaysteelmind/claude-memory.git ~/projects/claude-memory
+cd ~/projects/claude-memory
+./scripts/install.sh
+```
+
+**Option B: If repository already exists locally**
+```bash
+cd ~/projects/claude-memory
+./scripts/install.sh
 ```
 
 After installation, ensure PATH is updated:
@@ -77,7 +81,7 @@ dmm daemon start
 Wait for daemon to be ready:
 ```bash
 for i in {1..30}; do
-    dmm daemon status && break
+    dmm daemon status 2>/dev/null && break
     sleep 1
 done
 ```

@@ -220,33 +220,36 @@ class TestClaudeCLICommand:
 
 
 class TestReadmeIntegration:
-    """Test README.md has proper Claude Code integration documentation."""
+    """Test README.md has proper documentation."""
 
     @pytest.fixture
     def project_root(self) -> Path:
         """Get project root directory."""
         return Path(__file__).parent.parent.parent
 
-    def test_readme_has_claude_section(self, project_root: Path) -> None:
-        """README.md should have Claude Code Integration section."""
+    def test_readme_has_quick_start(self, project_root: Path) -> None:
+        """README.md should have Quick Start section."""
         readme = project_root / "README.md"
         content = readme.read_text()
-        assert "## Claude Code Integration" in content, "Missing Claude Code Integration section"
+        assert "## Quick Start" in content, "Missing Quick Start section"
 
-    def test_readme_has_automatic_setup(self, project_root: Path) -> None:
-        """README.md should document automatic setup."""
+    def test_readme_has_claude_code_instructions(self, project_root: Path) -> None:
+        """README.md should document Claude Code setup."""
         readme = project_root / "README.md"
         content = readme.read_text()
-        assert "### Automatic Setup" in content, "Missing Automatic Setup subsection"
+        assert "Claude Code" in content, "Missing Claude Code reference"
+        assert "start.md" in content, "Missing start.md reference"
 
-    def test_readme_has_manual_setup(self, project_root: Path) -> None:
-        """README.md should document manual setup."""
+    def test_readme_has_installation(self, project_root: Path) -> None:
+        """README.md should document installation."""
         readme = project_root / "README.md"
         content = readme.read_text()
-        assert "### Manual Setup" in content, "Missing Manual Setup subsection"
+        assert "## Installation" in content, "Missing Installation section"
+        assert "git clone" in content, "Missing git clone instruction"
 
-    def test_readme_has_verification(self, project_root: Path) -> None:
-        """README.md should document verification command."""
+    def test_readme_has_usage(self, project_root: Path) -> None:
+        """README.md should document basic usage."""
         readme = project_root / "README.md"
         content = readme.read_text()
-        assert "dmm claude check" in content, "Missing dmm claude check documentation"
+        assert "dmm bootstrap" in content, "Missing dmm bootstrap documentation"
+        assert "dmm status" in content, "Missing dmm status documentation"

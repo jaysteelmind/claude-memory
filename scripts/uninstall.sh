@@ -3,7 +3,7 @@
 # DMM Global Uninstallation Script
 # =============================================================================
 # Usage: ~/.dmm-system/scripts/uninstall.sh
-#    or: curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/uninstall.sh | bash
+#    or: curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/uninstall.sh | bash
 #
 # Removes DMM global installation from ~/.dmm-system
 # =============================================================================
@@ -159,7 +159,7 @@ print_completion() {
     echo "  - To remove project memories: rm -rf /path/to/project/.dmm"
     echo ""
     echo "To reinstall DMM:"
-    echo "  curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/install.sh | bash"
+    echo "  curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/install.sh | bash"
     echo ""
 }
 

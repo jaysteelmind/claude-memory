@@ -4,14 +4,14 @@
 # =============================================================================
 # Usage: dmm-update
 #    or: ~/.dmm-system/scripts/update.sh
-#    or: curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/update.sh | bash
+#    or: curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/update.sh | bash
 #
 # Updates DMM global installation at ~/.dmm-system
 # =============================================================================
 set -euo pipefail
 
 DMM_HOME="${DMM_HOME:-$HOME/.dmm-system}"
-DMM_REPO="${DMM_REPO:-https://github.com/anthropic/claude-memory.git}"
+DMM_REPO="${DMM_REPO:-https://github.com/jaysteelmind/claude-memory.git}"
 DMM_BRANCH="${DMM_BRANCH:-main}"
 
 # Colors

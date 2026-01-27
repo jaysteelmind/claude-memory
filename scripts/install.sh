@@ -2,7 +2,7 @@
 # =============================================================================
 # DMM Global Installation Script
 # =============================================================================
-# Usage: curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/install.sh | bash
 #    or: ./scripts/install.sh
 #
 # Installs DMM globally to ~/.dmm-system
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 DMM_HOME="${DMM_HOME:-$HOME/.dmm-system}"
-DMM_REPO="${DMM_REPO:-https://github.com/anthropic/claude-memory.git}"
+DMM_REPO="${DMM_REPO:-https://github.com/jaysteelmind/claude-memory.git}"
 DMM_BRANCH="${DMM_BRANCH:-main}"
 DMM_VERSION="1.0.0"
 
@@ -171,7 +171,7 @@ DMM_HOME="${DMM_HOME:-$HOME/.dmm-system}"
 
 if [ ! -d "$DMM_HOME" ]; then
     echo "Error: DMM not installed at $DMM_HOME" >&2
-    echo "Run the installer: curl -sSL https://raw.githubusercontent.com/anthropic/claude-memory/main/scripts/install.sh | bash" >&2
+    echo "Run the installer: curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/install.sh | bash" >&2
     exit 1
 fi
 
