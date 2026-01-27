@@ -28,8 +28,6 @@ The effectiveness of AI agents is constrained not by model capability, but by **
 - **Reason over connected information** via knowledge graphs
 - **Self-improve** through governed memory creation
 
-This represents the memory architecture used by sophisticated agent systems, formalized into a production-ready framework.
-
 ---
 
 ## The Problem with Current Approaches
@@ -125,12 +123,13 @@ Query → Retrieval → Graph Expansion → Context Assembly → Response
 
 ### For Claude Code (Fastest)
 
-**Step 1:** Copy the bootstrap file to your project:
+**Step 1:** Clone the repository and copy the bootstrap file to your project:
 ```bash
-cp ~/projects/claude-memory/templates/start.md /path/to/your/project/
+git clone https://github.com/jaysteelmind/claude-memory.git
+cp claude-memory/templates/start.md /path/to/your/project/
 ```
 
-**Step 2:** Open Claude Code and say:
+**Step 2:** Open Claude Code in your project and say:
 > "Read and execute start.md"
 
 **Done.** Claude handles installation, initialization, and configuration automatically.
@@ -139,9 +138,13 @@ cp ~/projects/claude-memory/templates/start.md /path/to/your/project/
 
 ## Installation
 
-### Global Installation
+### Global Installation (Recommended)
 ```bash
-cd ~/projects/claude-memory
+# Clone the repository
+git clone https://github.com/jaysteelmind/claude-memory.git
+cd claude-memory
+
+# Run the global installer
 ./scripts/install.sh
 ```
 
@@ -149,7 +152,7 @@ This installs DMM to `~/.dmm-system` and adds `dmm` to your PATH.
 
 ### Development Installation
 ```bash
-git clone https://github.com/your-org/claude-memory.git
+git clone https://github.com/jaysteelmind/claude-memory.git
 cd claude-memory
 poetry install
 ```
@@ -324,19 +327,17 @@ claude-memory/
 
 ## Design Principles
 
-DMM draws from principles in:
-
-- **Information Retrieval** — Semantic embeddings, two-stage retrieval
-- **Graph Theory** — Knowledge graphs, transitive inference
-- **Compiler Design** — Staged pipelines, deterministic processing
-- **Distributed Systems** — Agent coordination, message passing
-- **Unix Philosophy** — Atomic units, composability, text as interface
+- **File-Native**: All data as human-readable Markdown with Git versioning
+- **Semantic Retrieval**: Meaning-based search, not keyword matching
+- **Atomic Units**: Small, focused memories enabling precise retrieval
+- **Quality Gates**: AI-assisted validation for all memory writes
+- **Composability**: Skills and tools combine into complex capabilities
 
 ---
 
 ## Contributing
 
-We welcome contributions that maintain system rigor:
+Contributions welcome:
 
 1. All code must have comprehensive tests
 2. Memory format constraints must be preserved
@@ -354,7 +355,5 @@ MIT License - See [LICENSE](LICENSE) for details.
 <div align="center">
 
 **DMM** - *Cognitive memory for AI agents*
-
-Building the memory infrastructure for the next generation of AI systems.
 
 </div>
