@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dmm": {
+      "command": "dmm",
+      "args": ["mcp", "serve"],
+      "env": {
+        "DMM_PROJECT_ROOT": "${workspaceFolder}",
+        "DMM_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

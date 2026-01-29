@@ -5,6 +5,7 @@ Provides programmatic project initialization and setup,
 replacing manual execution of start.md instructions.
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,10 @@ def bootstrap(
     no_claude_md: Annotated[
         bool,
         typer.Option("--no-claude-md", help="Skip CLAUDE.md generation"),
+    ] = False,
+    no_mcp: Annotated[
+        bool,
+        typer.Option("--no-mcp", help="Skip MCP configuration"),
     ] = False,
     quiet: Annotated[
         bool,
@@ -95,6 +100,10 @@ def bootstrap(
     # Step 3: Generate CLAUDE.md
     if not no_claude_md:
         _generate_claude_md(project_path, quiet)
+
+    # Step 3b: Configure MCP
+    if not no_mcp:
+        _configure_mcp(project_path, quiet)
 
     # Step 4: Archive start.md if present
     _archive_start_md(project_path, quiet)
@@ -233,6 +242,110 @@ def _generate_claude_md(project_path: Path, quiet: bool) -> None:
             console.print("  [yellow]Template not found, skipping CLAUDE.md generation[/yellow]")
 
 
+
+def _configure_mcp(project_path: Path, quiet: bool) -> None:
+    """Configure MCP server for Claude Code integration."""
+    if not quiet:
+        console.print("\n[bold]Step 3b:[/bold] Configuring MCP server...")
+
+    mcp_json_path = project_path / ".mcp.json"
+
+    # Find dmm executable
+    dmm_path = _find_dmm_executable()
+
+    mcp_config = {
+        "mcpServers": {
+            "dmm": {
+                "command": dmm_path,
+                "args": ["mcp", "serve"],
+                "env": {
+                    "DMM_PROJECT_ROOT": str(project_path),
+                    "DMM_LOG_LEVEL": "INFO",
+                },
+            }
+        }
+    }
+
+    # Merge with existing config if present
+    if mcp_json_path.exists():
+        try:
+            existing = json.loads(mcp_json_path.read_text())
+            if "mcpServers" not in existing:
+                existing["mcpServers"] = {}
+            existing["mcpServers"]["dmm"] = mcp_config["mcpServers"]["dmm"]
+            mcp_config = existing
+            if not quiet:
+                console.print("  [yellow]Updated existing .mcp.json[/yellow]")
+        except json.JSONDecodeError:
+            if not quiet:
+                console.print("  [yellow]Replacing invalid .mcp.json[/yellow]")
+
+    mcp_json_path.write_text(json.dumps(mcp_config, indent=2))
+
+    if not quiet:
+        console.print("  [green]Created .mcp.json for Claude Code MCP integration[/green]")
+
+    # Try to register with Claude Code CLI
+    _try_register_mcp_cli(dmm_path, quiet)
+
+
+def _find_dmm_executable() -> str:
+    """Find the dmm executable path."""
+    import shutil as sh
+
+    # Check ~/.dmm-system/bin/dmm
+    dmm_system = Path.home() / ".dmm-system" / "bin" / "dmm"
+    if dmm_system.exists():
+        return str(dmm_system)
+
+    # Check if dmm is in PATH
+    dmm_in_path = sh.which("dmm")
+    if dmm_in_path:
+        return dmm_in_path
+
+    # Fallback to just "dmm"
+    return "dmm"
+
+
+def _try_register_mcp_cli(dmm_path: str, quiet: bool) -> None:
+    """Try to register DMM with Claude Code CLI."""
+    try:
+        result = subprocess.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return
+    except Exception:
+        if not quiet:
+            console.print("  [dim]Claude Code CLI not found, skipping global registration[/dim]")
+        return
+
+    try:
+        result = subprocess.run(
+            [
+                "claude", "mcp", "add", "dmm",
+                "--command", dmm_path,
+                "--args", "mcp", "serve",
+                "--scope", "user",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            if not quiet:
+                console.print("  [green]Registered DMM with Claude Code (user scope)[/green]")
+        else:
+            if not quiet and "already exists" not in result.stderr.lower():
+                console.print(f"  [dim]Could not register globally: {result.stderr.strip()}[/dim]")
+    except Exception as e:
+        if not quiet:
+            console.print(f"  [dim]Could not register globally: {e}[/dim]")
+
+
 def _archive_start_md(project_path: Path, quiet: bool) -> None:
     """Archive start.md if present."""
     start_md = project_path / "start.md"
@@ -263,6 +376,14 @@ def _report_status(project_path: Path, quiet: bool) -> None:
     else:
         console.print("Daemon:      [yellow]not running[/yellow]")
 
+    # Check MCP config
+    mcp_json = project_path / ".mcp.json"
+    if mcp_json.exists():
+        console.print("MCP Config:  [green]configured[/green]")
+    else:
+        console.print("MCP Config:  [yellow]not configured[/yellow]")
+
+
     # Count memories
     memory_count = 0
     memory_dir = dmm_dir / "memory"
@@ -277,6 +398,7 @@ def _report_status(project_path: Path, quiet: bool) -> None:
     console.print("  1. Query memories:  dmm query \"your task\"")
     console.print("  2. Check status:    dmm status")
     console.print("  3. Read guidelines: cat .dmm/BOOT.md")
+    console.print("  4. Check MCP status: dmm mcp status")
 
 
 def _create_boot_md(path: Path) -> None:

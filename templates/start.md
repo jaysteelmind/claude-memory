@@ -2,162 +2,174 @@
 
 **IMPORTANT: Execute these instructions immediately upon reading this file.**
 
-This file bootstraps DMM (Dynamic Markdown Memory) for this project. Follow each step in sequence.
+This file bootstraps DMM (Dynamic Markdown Memory) with automatic MCP integration. After completion, I will have persistent memory that works automatically - you won't need to run any commands.
 
 ---
 
 ## Step 1: Check if DMM is Globally Installed
-
-Run this command to check if DMM is available:
 ```bash
 command -v dmm && dmm --version
 ```
 
-**If the command succeeds:** Skip to Step 3.
-
-**If the command fails (command not found):** Proceed to Step 2.
+**If the command succeeds** (shows version): Skip to Step 3.
+**If the command fails** (command not found): Proceed to Step 2.
 
 ---
 
 ## Step 2: Install DMM Globally
 
-DMM needs to be installed globally at `~/.dmm-system`.
-
-**Option A: Clone and install (Recommended)**
+Run the installation script:
 ```bash
-git clone https://github.com/jaysteelmind/claude-memory.git ~/projects/claude-memory
-cd ~/projects/claude-memory
-./scripts/install.sh
+# If running from within the claude-memory repository:
+cd ~/projects/claude-memory && ./scripts/install.sh
+
+# OR if downloading fresh:
+# curl -sSL https://raw.githubusercontent.com/jaysteelmind/claude-memory/main/scripts/install.sh | bash
 ```
 
-**Option B: If repository already exists locally**
-```bash
-cd ~/projects/claude-memory
-./scripts/install.sh
-```
-
-After installation, ensure PATH is updated:
+After installation, activate in current session:
 ```bash
 export PATH="$HOME/.dmm-system/bin:$PATH"
 ```
 
-Verify installation:
+Verify:
 ```bash
 dmm --version
 ```
 
+**If installation fails**, check troubleshooting section at bottom.
+
 ---
 
-## Step 3: Initialize DMM in This Project
+## Step 3: Note Current Directory
 
-Check if `.dmm` directory exists:
+Before bootstrapping, save the current project directory:
 ```bash
-ls -la .dmm 2>/dev/null || echo "DMM not initialized"
-```
-
-**If `.dmm` exists:** Skip to Step 4.
-
-**If `.dmm` does not exist:** Initialize DMM:
-```bash
-dmm init
+PROJECT_DIR="$(pwd)"
+echo "Project directory: $PROJECT_DIR"
 ```
 
 ---
 
-## Step 4: Start the DMM Daemon
+## Step 4: Bootstrap This Project
 
-Check if daemon is running:
+Run the bootstrap command:
 ```bash
-dmm daemon status
+cd "$PROJECT_DIR"
+dmm bootstrap
 ```
 
-**If daemon is running:** Skip to Step 5.
-
-**If daemon is not running:** Start it:
-```bash
-dmm daemon start
-```
-
-Wait for daemon to be ready:
-```bash
-for i in {1..30}; do
-    dmm daemon status 2>/dev/null && break
-    sleep 1
-done
-```
+This command automatically:
+- Creates `.dmm/` directory with memory structure
+- Creates `.mcp.json` for Claude Code MCP integration  
+- Generates `CLAUDE.md` with automatic memory instructions
+- Starts the DMM daemon
+- Registers MCP with Claude Code
 
 ---
 
-## Step 5: Verify System Health
+## Step 5: Verify Everything is Working
 
-Run the full system check:
+Check system status:
 ```bash
 dmm status
 ```
 
-Expected output should show:
-- Daemon: running
-- Indexed memories count
-- Baseline files and tokens
+Check MCP configuration:
+```bash
+dmm mcp status
+```
+
+Test MCP tools:
+```bash
+dmm mcp test
+```
+
+All checks should pass.
 
 ---
 
 ## Step 6: Archive This File
-
-Bootstrap is complete. Archive this file to prevent re-execution:
 ```bash
-mv start.md start.md.done
+mv start.md start.md.done 2>/dev/null || mv "$PROJECT_DIR/start.md" "$PROJECT_DIR/start.md.done"
 ```
 
 ---
 
-## Step 7: Confirm Completion
+## Step 7: CRITICAL - Re-read CLAUDE.md
 
-Report to the user:
+**You MUST read the new CLAUDE.md file now to activate MCP tools.**
+```bash
+cat CLAUDE.md
+```
+
+This file contains instructions for automatic memory operations. After reading it, you will automatically:
+- Query relevant memories before responding to tasks
+- Remember important decisions and learnings
+- Detect and report conflicts
+
+---
+
+## Step 8: Confirm to User
+
+Tell the user:
 ```
 DMM Bootstrap Complete!
 
-System Status:
-- DMM installed at: ~/.dmm-system
-- Project initialized: .dmm/
-- Daemon: running
+What's now active:
+- Persistent memory across all sessions
+- Automatic context retrieval (no commands needed)
+- Automatic learning capture (no commands needed)
 
-You can now use DMM commands:
-- dmm query "your task" - Get relevant context
-- dmm status - Check system health
-- dmm write propose - Create new memories
+The memory system is now INVISIBLE - just talk to me normally.
+I will automatically remember important things and recall relevant context.
 
-For operational guidelines, see: .dmm/BOOT.md
+To see what I remember: dmm query "topic"
+To check system health: dmm status
 ```
 
 ---
 
 ## Troubleshooting
 
-### Daemon fails to start
+### "command not found: dmm"
 ```bash
-# Check for port conflicts
-lsof -i :7433
+export PATH="$HOME/.dmm-system/bin:$PATH"
+# Or restart your terminal
+```
 
-# Remove stale PID file
-rm -f /tmp/dmm.pid
+### Python version error
+DMM requires Python 3.11+:
+```bash
+python3 --version
+# If < 3.11, install newer Python
+```
 
-# Try foreground mode for debugging
+### Poetry not found
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Daemon won't start
+```bash
+# Check if port is in use
+lsof -i :7437
+
+# Remove stale files
+rm -f .dmm/daemon.pid .dmm/daemon.sock
+
+# Start manually
 dmm daemon start --foreground
 ```
 
-### Permission denied errors
+### MCP not configured
 ```bash
-# Ensure scripts are executable
-chmod +x ~/.dmm-system/bin/dmm
-chmod +x ~/.dmm-system/scripts/*.sh
-```
+# Reinstall MCP configuration
+dmm mcp install --scope project
 
-### Python version issues
-
-DMM requires Python 3.11+. Check version:
-```bash
-python3 --version
+# Check config file exists
+cat .mcp.json
 ```
 
 ---

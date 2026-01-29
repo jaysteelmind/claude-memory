@@ -20,6 +20,7 @@ from dmm.cli.graph import app as graph_app
 from dmm.cli.commands.bootstrap import bootstrap_app
 from dmm.cli.commands.remember import remember_command
 from dmm.cli.commands.forget import forget_command
+from dmm.cli.mcp_commands import mcp_app
 from dmm.core.constants import DEFAULT_HOST, DEFAULT_PORT, get_memory_root
 
 console = Console()
@@ -50,6 +51,9 @@ app.add_typer(graph_app, name="graph")
 
 # Phase 7: Bootstrap and quick commands
 app.add_typer(bootstrap_app, name="bootstrap")
+
+# Phase 8: MCP server commands
+app.add_typer(mcp_app, name="mcp")
 app.command("remember")(remember_command)
 app.command("forget")(forget_command)
 

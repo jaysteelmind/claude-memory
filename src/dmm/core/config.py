@@ -166,3 +166,64 @@ class DMMConfig:
 
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2)
+
+
+# Global config cache for MCP tools
+_config_cache: dict[str, Any] | None = None
+
+
+def get_config() -> dict[str, Any]:
+    """
+    Get configuration as a dictionary.
+    
+    This function provides a simple dictionary interface for MCP tools,
+    caching the configuration for performance.
+    
+    Returns:
+        Configuration dictionary with daemon, memory_root, index_root, etc.
+    """
+    global _config_cache
+    
+    if _config_cache is not None:
+        return _config_cache
+    
+    try:
+        dmm_root = get_dmm_root()
+        config = DMMConfig.load()
+        
+        _config_cache = {
+            "daemon": {
+                "host": config.daemon.host,
+                "port": config.daemon.port,
+            },
+            "memory_root": str(dmm_root / "memory"),
+            "index_root": str(dmm_root / "index"),
+            "project_root": str(dmm_root.parent),
+            "baseline_budget": config.retrieval.baseline_budget,
+            "default_query_budget": config.retrieval.default_budget,
+        }
+    except Exception:
+        # Fallback to defaults if config can't be loaded
+        from pathlib import Path
+        cwd = Path.cwd()
+        dmm_root = cwd / ".dmm"
+        
+        _config_cache = {
+            "daemon": {
+                "host": DEFAULT_HOST,
+                "port": DEFAULT_PORT,
+            },
+            "memory_root": str(dmm_root / "memory"),
+            "index_root": str(dmm_root / "index"),
+            "project_root": str(cwd),
+            "baseline_budget": DEFAULT_BASELINE_BUDGET,
+            "default_query_budget": DEFAULT_TOTAL_BUDGET,
+        }
+    
+    return _config_cache
+
+
+def clear_config_cache() -> None:
+    """Clear the configuration cache (useful for testing)."""
+    global _config_cache
+    _config_cache = None
